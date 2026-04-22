@@ -458,7 +458,7 @@
   .live-feed {
     background: var(--surface);
     border-top: 1px solid var(--border);
-    max-height: 120px;
+    max-height: 180px;
     overflow: hidden;
   }
   .live-feed-header {
@@ -823,6 +823,30 @@
   .conn-indicator.connected { background: var(--green); }
   .conn-indicator.error { background: var(--red); }
 
+  /* Offline banner */
+  .offline-banner {
+    display: none;
+    background: rgba(239,68,68,0.15);
+    border-bottom: 1px solid rgba(239,68,68,0.3);
+    color: var(--red);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-align: center;
+    padding: 0.35rem;
+    animation: pulse 2s infinite;
+  }
+  .offline-banner.show { display: block; }
+  .offline-queue-badge {
+    display: inline-block;
+    background: var(--red);
+    color: #fff;
+    border-radius: 10px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    margin-left: 0.4rem;
+  }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -923,27 +947,70 @@
 
   <!-- ADMIN VIEW -->
   <div id="view-admin">
-    <!-- Stats overview -->
+    <!-- Stats overview / Dashboard -->
     <div class="admin-section">
       <div class="admin-section-header">
-        <div class="admin-section-title">📊 Statistiken</div>
+        <div class="admin-section-title">📊 Live-Dashboard</div>
         <div style="font-size:0.72rem;color:var(--muted)" id="admin-event-label">–</div>
       </div>
       <div class="admin-section-body">
         <!-- Event selector admin -->
         <div class="event-pills" id="event-pills-admin"></div>
-        <div class="stats-grid" id="admin-stats-grid">
+
+        <!-- KPI Cards -->
+        <div class="stats-grid" id="admin-stats-grid" style="margin-top:0.75rem">
           <div class="stat-card"><div class="num" id="a-total">–</div><div class="lbl">Gäste Gesamt</div></div>
           <div class="stat-card"><div class="num" style="color:var(--green)" id="a-checked">–</div><div class="lbl">Eingecheckt</div></div>
           <div class="stat-card"><div class="num" style="color:var(--accent)" id="a-vip">–</div><div class="lbl">VIP</div></div>
           <div class="stat-card"><div class="num" style="color:var(--muted)" id="a-pending">–</div><div class="lbl">Ausstehend</div></div>
         </div>
+
+        <!-- Progress bar -->
         <div style="margin-top:0.75rem">
           <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--muted);margin-bottom:0.3rem">
             <span>Fortschritt</span><span id="a-pct">0%</span>
           </div>
           <div class="progress-wrap"><div class="progress-bar" id="a-progress" style="width:0%"></div></div>
         </div>
+
+        <!-- Charts row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:1rem">
+          <!-- Donut chart: checked vs pending -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;text-align:center">
+            <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Eintritt</div>
+            <svg id="donut-chart" width="90" height="90" viewBox="0 0 90 90" style="display:block;margin:0 auto">
+              <circle cx="45" cy="45" r="35" fill="none" stroke="var(--border)" stroke-width="12"/>
+              <circle id="donut-arc" cx="45" cy="45" r="35" fill="none" stroke="var(--green)" stroke-width="12"
+                stroke-dasharray="0 220" stroke-dashoffset="55" stroke-linecap="round"
+                style="transition:stroke-dasharray 0.6s ease"/>
+              <text id="donut-pct" x="45" y="49" text-anchor="middle" font-family="Bebas Neue,sans-serif"
+                font-size="16" fill="var(--text)">0%</text>
+            </svg>
+            <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:0.4rem;font-size:0.65rem">
+              <span style="color:var(--green)">● Eingecheckt</span>
+              <span style="color:var(--border)">● Ausstehend</span>
+            </div>
+          </div>
+
+          <!-- Bar chart: by entrance -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem">
+            <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Pro Eingang</div>
+            <div id="entrance-chart" style="display:flex;flex-direction:column;gap:0.4rem"></div>
+          </div>
+        </div>
+
+        <!-- Timeline chart -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;margin-top:0.75rem">
+          <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Check-in Verlauf (letzte Stunden)</div>
+          <svg id="timeline-chart" width="100%" height="60" style="overflow:visible"></svg>
+        </div>
+
+        <!-- Category breakdown -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;margin-top:0.75rem">
+          <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Pro Kategorie</div>
+          <div id="category-chart" style="display:flex;flex-direction:column;gap:0.4rem"></div>
+        </div>
+
         <div style="margin-top:1rem">
           <button class="btn secondary" onclick="exportCSV()" style="width:auto;padding:0.5rem 1rem;font-size:0.8rem">📤 CSV Export</button>
         </div>
@@ -1232,8 +1299,14 @@ async function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   document.getElementById('header-entrance').textContent = currentUser.name;
+  // Always start on check-in tab, hide admin view by default
+  document.getElementById('view-admin').style.display = 'none';
+  document.getElementById('view-admin').classList.remove('active');
   if (currentUser.is_admin) {
     document.getElementById('tab-bar').style.display = 'flex';
+  } else {
+    document.getElementById('tab-bar').style.display = 'none';
+    document.getElementById('view-checkin').style.display = 'flex';
   }
   await loadEvents();
   setupRealtime();
@@ -1413,32 +1486,44 @@ async function confirmCheckin() {
   if (!pendingCheckin) return;
   const g = pendingCheckin;
   closeConfirm();
+  const now = new Date().toISOString();
+  const fullName = [g.vorname, g.nachname].filter(Boolean).join(' ');
+
+  // Optimistically update UI immediately
+  const idx = allGuests.findIndex(x => x.id === g.id);
+  if (idx !== -1) {
+    allGuests[idx].checked_in = true;
+    allGuests[idx].checked_in_at = now;
+    allGuests[idx].checked_in_by = currentUser.name;
+  }
+  updateStats();
+  applySearch();
+  showSuccessFlash(fullName);
+  addLiveFeedItem(g, currentUser.name);
+
+  if (!isOnline) {
+    // Queue for later sync
+    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, checked_in_at: now, entrance: currentUser.name });
+    saveOfflineQueue();
+    updateOfflineBadge();
+    toast('📵 Offline gespeichert – wird synchronisiert sobald Verbindung besteht');
+    return;
+  }
+
   try {
-    const now = new Date().toISOString();
     await patch(`guests?id=eq.${g.id}`, {
-      checked_in: true,
-      checked_in_at: now,
-      checked_in_by: currentUser.name
+      checked_in: true, checked_in_at: now, checked_in_by: currentUser.name
     });
     await post('checkin_log', {
-      guest_id: g.id,
-      event_id: currentEventId,
-      entrance_name: currentUser.name,
-      action: 'checkin'
+      guest_id: g.id, event_id: currentEventId, entrance_name: currentUser.name, action: 'checkin'
     });
-    // Update local state
-    const idx = allGuests.findIndex(x => x.id === g.id);
-    if (idx !== -1) {
-      allGuests[idx].checked_in = true;
-      allGuests[idx].checked_in_at = now;
-      allGuests[idx].checked_in_by = currentUser.name;
-    }
-    updateStats();
-    applySearch();
-    showSuccessFlash([g.vorname, g.nachname].filter(Boolean).join(' '));
-    addLiveFeedItem(g, currentUser.name);
   } catch(e) {
-    toast('Fehler: ' + e.message, 'error');
+    // Network failed – queue it
+    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, checked_in_at: now, entrance: currentUser.name });
+    saveOfflineQueue();
+    setOnlineState(false);
+    updateOfflineBadge();
+    toast('📵 Verbindung unterbrochen – lokal gespeichert');
   }
 }
 
@@ -1462,28 +1547,85 @@ function addLiveFeedItem(guest, entrance) {
   div.className = 'live-item';
   div.innerHTML = `<span style="color:var(--green)">✓</span><span class="name">${escHtml(name)}</span><span class="entrance">${escHtml(entrance)} · ${time}</span>`;
   items.insertBefore(div, items.firstChild);
-  // Keep only 3
-  while (items.children.length > 3) items.removeChild(items.lastChild);
+  // Keep only 5
+  while (items.children.length > 5) items.removeChild(items.lastChild);
+}
+
+// ── OFFLINE QUEUE ────────────────────────────
+let offlineQueue = JSON.parse(localStorage.getItem('gdsf_offline_queue') || '[]');
+let isOnline = true;
+
+function setOnlineState(online) {
+  if (isOnline === online) return;
+  isOnline = online;
+  const banner = document.getElementById('offline-banner');
+  const ind = document.getElementById('conn-indicator');
+  if (online) {
+    banner.classList.remove('show');
+    ind.classList.remove('error');
+    ind.classList.add('connected');
+    flushOfflineQueue();
+  } else {
+    banner.classList.add('show');
+    ind.classList.remove('connected');
+    ind.classList.add('error');
+  }
+  updateOfflineBadge();
+}
+
+function updateOfflineBadge() {
+  const badge = document.getElementById('offline-count');
+  if (offlineQueue.length > 0) {
+    badge.textContent = offlineQueue.length;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function saveOfflineQueue() {
+  try { localStorage.setItem('gdsf_offline_queue', JSON.stringify(offlineQueue)); } catch(e) {}
+}
+
+async function flushOfflineQueue() {
+  if (offlineQueue.length === 0) return;
+  const toSync = [...offlineQueue];
+  for (const item of toSync) {
+    try {
+      await patch(`guests?id=eq.${item.guest_id}`, {
+        checked_in: true, checked_in_at: item.checked_in_at, checked_in_by: item.entrance
+      });
+      await post('checkin_log', {
+        guest_id: item.guest_id, event_id: item.event_id,
+        entrance_name: item.entrance, action: 'checkin'
+      });
+      offlineQueue = offlineQueue.filter(x => x.guest_id !== item.guest_id);
+      saveOfflineQueue();
+    } catch(e) { break; } // stop on first failure
+  }
+  updateOfflineBadge();
+  if (offlineQueue.length === 0) toast('✓ Offline Check-ins synchronisiert!', 'success');
 }
 
 // ── REALTIME ─────────────────────────────────
 function setupRealtime() {
   const indicator = document.getElementById('conn-indicator');
-  // Use Supabase Realtime via REST polling as fallback (simpler, no SDK)
-  // We'll poll every 3 seconds for guest updates
   let lastPoll = Date.now();
   indicator.classList.add('connected');
-
   let pollInterval = 6000;
   let failCount = 0;
 
+  // Flush any pending offline queue on startup
+  flushOfflineQueue();
+
   async function doPoll() {
-    if (!currentEventId) return;
+    if (!currentEventId) { setTimeout(doPoll, pollInterval); return; }
     try {
       const since = new Date(lastPoll - 8000).toISOString();
       const updated = await get(`guests?event_id=eq.${currentEventId}&checked_in=eq.true&checked_in_at=gt.${since}&select=*`);
       lastPoll = Date.now();
       failCount = 0;
+      pollInterval = 6000;
       if (updated && updated.length > 0) {
         let changed = false;
         updated.forEach(g => {
@@ -1498,39 +1640,146 @@ function setupRealtime() {
         });
         if (changed) { updateStats(); applySearch(); }
       }
-      indicator.classList.remove('error');
-      indicator.classList.add('connected');
+      setOnlineState(true);
     } catch(e) {
       failCount++;
-      indicator.classList.remove('connected');
-      indicator.classList.add('error');
-      // Exponential backoff on errors (max 30s)
+      setOnlineState(false);
       pollInterval = Math.min(30000, 6000 * Math.pow(1.5, failCount));
     }
     setTimeout(doPoll, pollInterval);
   }
 
   setTimeout(doPoll, pollInterval);
+
+  // Native online/offline events as additional signals
+  window.addEventListener('online',  () => { pollInterval = 6000; doPoll(); });
+  window.addEventListener('offline', () => setOnlineState(false));
 }
 
-// ── ADMIN: STATS ─────────────────────────────
+// ── ADMIN: STATS + CHARTS ────────────────────
 async function loadAdminStats() {
   if (!currentEventId) return;
   const ev = events.find(e => e.id === currentEventId);
   document.getElementById('admin-event-label').textContent = ev ? ev.name : '–';
   try {
-    const guests = await get(`guests?event_id=eq.${currentEventId}&select=id,checked_in,vip`) || [];
+    const guests = await get(`guests?event_id=eq.${currentEventId}&select=id,checked_in,vip,kategorie,checked_in_by,checked_in_at`) || [];
     const total = guests.length;
     const checked = guests.filter(g => g.checked_in).length;
     const vip = guests.filter(g => g.vip).length;
     const pct = total > 0 ? Math.round(checked/total*100) : 0;
+
+    // KPI cards
     document.getElementById('a-total').textContent = total;
     document.getElementById('a-checked').textContent = checked;
     document.getElementById('a-vip').textContent = vip;
     document.getElementById('a-pending').textContent = total - checked;
     document.getElementById('a-pct').textContent = pct + '%';
     document.getElementById('a-progress').style.width = pct + '%';
-  } catch(e) {}
+
+    // Donut chart
+    const circ = 2 * Math.PI * 35; // circumference
+    const arc = (checked / (total || 1)) * circ;
+    document.getElementById('donut-arc').setAttribute('stroke-dasharray', `${arc.toFixed(1)} ${circ.toFixed(1)}`);
+    document.getElementById('donut-pct').textContent = pct + '%';
+
+    // Entrance bar chart
+    const byEntrance = {};
+    guests.filter(g => g.checked_in && g.checked_in_by).forEach(g => {
+      byEntrance[g.checked_in_by] = (byEntrance[g.checked_in_by] || 0) + 1;
+    });
+    const entranceEl = document.getElementById('entrance-chart');
+    const maxE = Math.max(...Object.values(byEntrance), 1);
+    if (Object.keys(byEntrance).length === 0) {
+      entranceEl.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;text-align:center;padding:0.5rem">Noch keine Check-ins</div>';
+    } else {
+      entranceEl.innerHTML = Object.entries(byEntrance)
+        .sort((a,b) => b[1]-a[1])
+        .map(([name, count]) => {
+          const pctBar = Math.round(count/maxE*100);
+          return `<div>
+            <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.2rem">
+              <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">${escHtml(name)}</span>
+              <span style="color:var(--accent);font-weight:600">${count}</span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:5px">
+              <div style="background:var(--accent);height:5px;border-radius:4px;width:${pctBar}%;transition:width 0.4s ease"></div>
+            </div>
+          </div>`;
+        }).join('');
+    }
+
+    // Category chart
+    const byCat = {};
+    guests.forEach(g => {
+      const cat = g.kategorie || 'Sonstige';
+      if (!byCat[cat]) byCat[cat] = { total: 0, checked: 0 };
+      byCat[cat].total++;
+      if (g.checked_in) byCat[cat].checked++;
+    });
+    const catEl = document.getElementById('category-chart');
+    catEl.innerHTML = Object.entries(byCat)
+      .sort((a,b) => b[1].total - a[1].total)
+      .map(([cat, d]) => {
+        const p = Math.round(d.checked/d.total*100);
+        return `<div>
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.2rem">
+            <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${escHtml(cat)}</span>
+            <span style="color:var(--muted)">${d.checked}/${d.total} <span style="color:var(--green)">${p}%</span></span>
+          </div>
+          <div style="background:var(--border);border-radius:4px;height:5px">
+            <div style="background:var(--green);height:5px;border-radius:4px;width:${p}%;transition:width 0.4s ease"></div>
+          </div>
+        </div>`;
+      }).join('');
+
+    // Timeline chart – buckets by 30min
+    const checkedIn = guests.filter(g => g.checked_in && g.checked_in_at);
+    renderTimelineChart(checkedIn);
+
+  } catch(e) { console.error('loadAdminStats:', e); }
+}
+
+function renderTimelineChart(checkedGuests) {
+  const svg = document.getElementById('timeline-chart');
+  if (!svg) return;
+  if (checkedGuests.length === 0) {
+    svg.innerHTML = '<text x="50%" y="35" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" fill="#6b6b80">Noch keine Check-ins</text>';
+    return;
+  }
+  // Group into 30-min buckets
+  const buckets = {};
+  checkedGuests.forEach(g => {
+    const d = new Date(g.checked_in_at);
+    const key = `${d.getHours()}:${d.getMinutes() < 30 ? '00' : '30'}`;
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  const keys = Object.keys(buckets).sort();
+  const vals = keys.map(k => buckets[k]);
+  const maxV = Math.max(...vals, 1);
+  const W = 260, H = 50, pad = 4;
+  const bw = Math.max(8, Math.floor((W - pad*(keys.length+1)) / keys.length));
+  let bars = '';
+  keys.forEach((k, i) => {
+    const bh = Math.round((vals[i]/maxV) * (H-14));
+    const x = pad + i*(bw+pad);
+    const y = H - bh - 12;
+    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="2"
+      fill="url(#barGrad)" opacity="0.9"/>`;
+    if (i % 2 === 0 || keys.length <= 6) {
+      bars += `<text x="${x+bw/2}" y="${H}" text-anchor="middle"
+        font-family="DM Sans,sans-serif" font-size="8" fill="#6b6b80">${k}</text>`;
+    }
+    bars += `<text x="${x+bw/2}" y="${y-2}" text-anchor="middle"
+      font-family="DM Sans,sans-serif" font-size="8" fill="var(--accent)" font-weight="bold">${vals[i]}</text>`;
+  });
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f0c040"/>
+        <stop offset="100%" stop-color="#e05a00"/>
+      </linearGradient>
+    </defs>
+    ${bars}`;
 }
 
 // ── ADMIN: EVENTS LIST ───────────────────────
@@ -1810,7 +2059,10 @@ async function resetCheckins() {
 }
 
 // ── TAB SWITCHING ────────────────────────────
+let dashboardTimer = null;
 function switchTab(tab) {
+  // Non-admins can never access admin tab
+  if (tab === 'admin' && (!currentUser || !currentUser.is_admin)) return;
   document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='checkin')||(i===1&&tab==='admin')));
   document.getElementById('view-checkin').style.display = tab === 'checkin' ? 'flex' : 'none';
   const adminView = document.getElementById('view-admin');
@@ -1822,6 +2074,13 @@ function switchTab(tab) {
     loadAccounts();
     renderEventsList();
     if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
+    // Auto-refresh dashboard every 15s
+    if (dashboardTimer) clearInterval(dashboardTimer);
+    dashboardTimer = setInterval(() => {
+      if (document.getElementById('view-admin').classList.contains('active')) loadAdminStats();
+    }, 15000);
+  } else {
+    if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; }
   }
 }
 
