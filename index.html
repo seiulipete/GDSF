@@ -995,6 +995,48 @@
       </div>
     </div>
 
+    <!-- Gast hinzufügen -->
+    <div class="admin-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">👤 Gast hinzufügen</div>
+      </div>
+      <div class="admin-section-body">
+        <div class="event-pills" id="event-pills-addguest"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-top:0.5rem">
+          <div class="form-group" style="margin:0">
+            <label>Vorname</label>
+            <input type="text" id="ag-vorname" placeholder="Vorname">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Nachname *</label>
+            <input type="text" id="ag-nachname" placeholder="Nachname">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Firma / Organisation</label>
+            <input type="text" id="ag-firma" placeholder="Firma oder Beschreibung">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Kategorie</label>
+            <input type="text" id="ag-kategorie" placeholder="z.B. Allgemein, Bands…">
+          </div>
+          <div class="form-group" style="margin:0;grid-column:1/-1">
+            <label>Notiz</label>
+            <input type="text" id="ag-notiz" placeholder="Optionale Notiz">
+          </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;margin-top:0.75rem;align-items:center">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.8rem;color:var(--muted)">
+            <input type="checkbox" id="ag-vip" style="width:16px;height:16px;accent-color:var(--accent)"> VIP
+          </label>
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.8rem;color:var(--muted)">
+            <input type="checkbox" id="ag-gl" checked style="width:16px;height:16px;accent-color:var(--accent)"> Gästeliste
+          </label>
+          <button class="btn" onclick="saveNewGuest()" style="flex:1;max-width:200px">👤 Gast speichern</button>
+        </div>
+        <div id="ag-error" style="display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#ef4444;font-size:0.78rem;padding:0.5rem 0.75rem;margin-top:0.5rem"></div>
+      </div>
+    </div>
+
     <!-- Danger zone -->
     <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
       <div class="admin-section-header">
@@ -1095,6 +1137,7 @@ let pendingCheckin = null;
 let importData = null;
 let importSheetIndex = 0;
 let importEventId = null;
+let addGuestEventId = null;
 let realtimeChannel = null;
 
 // ── API HELPERS ──────────────────────────────
@@ -1219,7 +1262,7 @@ function renderEventPills() {
 }
 
 function renderAdminEventPills() {
-  const containers = ['event-pills-admin','event-pills-import'];
+  const containers = ['event-pills-admin','event-pills-import','event-pills-addguest'];
   containers.forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
@@ -1228,21 +1271,21 @@ function renderAdminEventPills() {
     ).join('');
   });
   if (events.length > 0 && !importEventId) importEventId = events[0].id;
+  if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
 }
 
 function selectAdminEvent(id, fromPillsId) {
+  const pills = document.querySelectorAll('#' + fromPillsId + ' .event-pill');
+  pills.forEach(p => p.classList.remove('active'));
+  pills.forEach(p => {
+    if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
+  });
   if (fromPillsId === 'event-pills-import') {
     importEventId = id;
-    document.querySelectorAll('#event-pills-import .event-pill').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('#event-pills-import .event-pill').forEach(p => {
-      if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
-    });
+  } else if (fromPillsId === 'event-pills-addguest') {
+    addGuestEventId = id;
   } else {
     currentEventId = id;
-    document.querySelectorAll('#event-pills-admin .event-pill').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('#event-pills-admin .event-pill').forEach(p => {
-      if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
-    });
     loadAdminStats();
   }
 }
@@ -1686,6 +1729,55 @@ async function confirmImport() {
   }
 }
 
+// ── ADD GUEST MANUALLY ───────────────────────
+async function saveNewGuest() {
+  const errEl = document.getElementById('ag-error');
+  errEl.style.display = 'none';
+  const targetEventId = addGuestEventId || currentEventId;
+  if (!targetEventId) {
+    errEl.textContent = 'Bitte zuerst ein Event auswählen.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const nachname = document.getElementById('ag-nachname').value.trim();
+  if (!nachname) {
+    errEl.textContent = 'Nachname ist ein Pflichtfeld.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const guest = {
+    event_id: targetEventId,
+    vorname: document.getElementById('ag-vorname').value.trim() || null,
+    nachname,
+    firma: document.getElementById('ag-firma').value.trim() || null,
+    kategorie: document.getElementById('ag-kategorie').value.trim() || null,
+    notiz: document.getElementById('ag-notiz').value.trim() || null,
+    vip: document.getElementById('ag-vip').checked,
+    gl: document.getElementById('ag-gl').checked,
+    checked_in: false
+  };
+  const btn = document.querySelector('[onclick="saveNewGuest()"]');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  try {
+    await post('guests', guest);
+    // Clear form
+    ['ag-vorname','ag-nachname','ag-firma','ag-kategorie','ag-notiz'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('ag-vip').checked = false;
+    document.getElementById('ag-gl').checked = true;
+    const ev = events.find(e => e.id === targetEventId);
+    toast(`✓ ${guest.vorname ? guest.vorname + ' ' : ''}${guest.nachname} hinzugefügt${ev ? ' (' + ev.name + ')' : ''}`, 'success');
+    loadAdminStats();
+    if (currentEventId === targetEventId) await loadGuests();
+  } catch(e) {
+    errEl.textContent = 'Fehler: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    if (btn) { btn.textContent = '👤 Gast speichern'; btn.disabled = false; }
+  }
+}
+
 // ── EXPORT ───────────────────────────────────
 async function exportCSV() {
   if (!currentEventId) return;
@@ -1729,6 +1821,7 @@ function switchTab(tab) {
     loadAdminStats();
     loadAccounts();
     renderEventsList();
+    if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
   }
 }
 
