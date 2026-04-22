@@ -893,9 +893,10 @@
   </div>
 
   <!-- Tabs (only for admin) -->
-  <div class="tab-bar" id="tab-bar" style="display:none">
+  <div class="tab-bar" id="tab-bar">
     <button class="tab-btn active" onclick="switchTab('checkin')">✓ Check-In</button>
-    <button class="tab-btn" onclick="switchTab('admin')">⚙ Admin</button>
+    <button class="tab-btn" onclick="switchTab('dashboard')">📊 Live-Dashboard</button>
+    <button class="tab-btn" id="tab-admin-btn" style="display:none" onclick="switchTab('admin')">⚙ Admin</button>
   </div>
 
   <!-- CHECK-IN VIEW -->
@@ -942,6 +943,66 @@
     <div class="live-feed" id="live-feed" style="display:none">
       <div class="live-feed-header"><div class="live-dot"></div> Live Check-ins</div>
       <div id="live-feed-items"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD VIEW (alle User) -->
+  <div id="view-dashboard" style="display:none;flex:1;overflow-y:auto;padding:1rem;flex-direction:column;gap:1rem">
+    <!-- Event selector -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:0.1em;color:var(--accent)">📊 Live-Dashboard</div>
+        <div style="font-size:0.72rem;color:var(--muted)" id="dash-event-label">–</div>
+      </div>
+      <div style="padding:1rem">
+        <div class="event-pills" id="event-pills-dashboard"></div>
+        <!-- KPI Cards -->
+        <div class="stats-grid" style="margin-top:0.75rem">
+          <div class="stat-card"><div class="num" id="d-total">–</div><div class="lbl">Gäste Gesamt</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--green)" id="d-checked">–</div><div class="lbl">Eingecheckt</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--accent)" id="d-vip">–</div><div class="lbl">VIP</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--muted)" id="d-pending">–</div><div class="lbl">Ausstehend</div></div>
+        </div>
+        <!-- Progress bar -->
+        <div style="margin-top:0.75rem">
+          <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--muted);margin-bottom:0.3rem">
+            <span>Fortschritt</span><span id="d-pct">0%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" id="d-progress" style="width:0%"></div></div>
+        </div>
+        <!-- Charts row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:1rem">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;text-align:center">
+            <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Eintritt</div>
+            <svg id="d-donut-chart" width="90" height="90" viewBox="0 0 90 90" style="display:block;margin:0 auto">
+              <circle cx="45" cy="45" r="35" fill="none" stroke="var(--border)" stroke-width="12"/>
+              <circle id="d-donut-arc" cx="45" cy="45" r="35" fill="none" stroke="var(--green)" stroke-width="12"
+                stroke-dasharray="0 220" stroke-dashoffset="55" stroke-linecap="round"
+                style="transition:stroke-dasharray 0.6s ease"/>
+              <text id="d-donut-pct" x="45" y="49" text-anchor="middle" font-family="Bebas Neue,sans-serif"
+                font-size="16" fill="var(--text)">0%</text>
+            </svg>
+            <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:0.4rem;font-size:0.65rem">
+              <span style="color:var(--green)">● Eingecheckt</span>
+              <span style="color:var(--border)">● Ausstehend</span>
+            </div>
+          </div>
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem">
+            <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Pro Eingang</div>
+            <div id="d-entrance-chart" style="display:flex;flex-direction:column;gap:0.4rem"></div>
+          </div>
+        </div>
+        <!-- Timeline -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;margin-top:0.75rem">
+          <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Check-in Verlauf</div>
+          <svg id="d-timeline-chart" width="100%" height="60" style="overflow:visible"></svg>
+        </div>
+        <!-- Category -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0.75rem;margin-top:0.75rem">
+          <div style="font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:0.6rem">Pro Kategorie</div>
+          <div id="d-category-chart" style="display:flex;flex-direction:column;gap:0.4rem"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1299,14 +1360,15 @@ async function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   document.getElementById('header-entrance').textContent = currentUser.name;
-  // Always start on check-in tab, hide admin view by default
+  // Always show tab bar; admin tab only for admins
   document.getElementById('view-admin').style.display = 'none';
   document.getElementById('view-admin').classList.remove('active');
+  document.getElementById('view-dashboard').style.display = 'none';
+  document.getElementById('view-checkin').style.display = 'flex';
   if (currentUser.is_admin) {
-    document.getElementById('tab-bar').style.display = 'flex';
+    document.getElementById('tab-admin-btn').style.display = '';
   } else {
-    document.getElementById('tab-bar').style.display = 'none';
-    document.getElementById('view-checkin').style.display = 'flex';
+    document.getElementById('tab-admin-btn').style.display = 'none';
   }
   await loadEvents();
   setupRealtime();
@@ -2060,28 +2122,165 @@ async function resetCheckins() {
 
 // ── TAB SWITCHING ────────────────────────────
 let dashboardTimer = null;
+let dashboardEventId = null;
+
 function switchTab(tab) {
   // Non-admins can never access admin tab
   if (tab === 'admin' && (!currentUser || !currentUser.is_admin)) return;
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='checkin')||(i===1&&tab==='admin')));
+
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const tabMap = { checkin: 0, dashboard: 1, admin: 2 };
+  const allBtns = document.querySelectorAll('.tab-btn');
+  if (allBtns[tabMap[tab]]) allBtns[tabMap[tab]].classList.add('active');
+
+  // Show/hide views
   document.getElementById('view-checkin').style.display = tab === 'checkin' ? 'flex' : 'none';
+  document.getElementById('view-dashboard').style.display = tab === 'dashboard' ? 'flex' : 'none';
   const adminView = document.getElementById('view-admin');
   adminView.style.display = tab === 'admin' ? 'flex' : 'none';
   adminView.classList.toggle('active', tab === 'admin');
+
   if (tab === 'admin') {
     renderAdminEventPills();
     loadAdminStats();
     loadAccounts();
     renderEventsList();
     if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
-    // Auto-refresh dashboard every 15s
     if (dashboardTimer) clearInterval(dashboardTimer);
     dashboardTimer = setInterval(() => {
       if (document.getElementById('view-admin').classList.contains('active')) loadAdminStats();
     }, 15000);
+  } else if (tab === 'dashboard') {
+    // Init dashboard event pills
+    renderDashboardEventPills();
+    loadDashboardStats();
+    if (dashboardTimer) clearInterval(dashboardTimer);
+    dashboardTimer = setInterval(() => {
+      if (document.getElementById('view-dashboard').style.display !== 'none') loadDashboardStats();
+    }, 15000);
   } else {
     if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; }
   }
+}
+
+function renderDashboardEventPills() {
+  const c = document.getElementById('event-pills-dashboard');
+  if (!c) return;
+  if (events.length > 0 && !dashboardEventId) dashboardEventId = events[0].id;
+  c.innerHTML = events.map(e =>
+    `<div class="event-pill ${e.id===dashboardEventId?'active':''}" onclick="selectDashboardEvent('${e.id}')">${e.name}</div>`
+  ).join('');
+  const ev = events.find(e => e.id === dashboardEventId);
+  document.getElementById('dash-event-label').textContent = ev ? ev.name : '–';
+}
+
+function selectDashboardEvent(id) {
+  dashboardEventId = id;
+  document.querySelectorAll('#event-pills-dashboard .event-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#event-pills-dashboard .event-pill').forEach(p => {
+    if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
+  });
+  const ev = events.find(e => e.id === id);
+  document.getElementById('dash-event-label').textContent = ev ? ev.name : '–';
+  loadDashboardStats();
+}
+
+async function loadDashboardStats() {
+  const eid = dashboardEventId || currentEventId;
+  if (!eid) return;
+  try {
+    const guests = await get(`guests?event_id=eq.${eid}&select=id,checked_in,vip,kategorie,checked_in_by,checked_in_at`) || [];
+    const total = guests.length;
+    const checked = guests.filter(g => g.checked_in).length;
+    const vip = guests.filter(g => g.vip).length;
+    const pct = total > 0 ? Math.round(checked/total*100) : 0;
+    document.getElementById('d-total').textContent = total;
+    document.getElementById('d-checked').textContent = checked;
+    document.getElementById('d-vip').textContent = vip;
+    document.getElementById('d-pending').textContent = total - checked;
+    document.getElementById('d-pct').textContent = pct + '%';
+    document.getElementById('d-progress').style.width = pct + '%';
+    // Donut
+    const circ = 2 * Math.PI * 35;
+    const arc = (checked / (total || 1)) * circ;
+    document.getElementById('d-donut-arc').setAttribute('stroke-dasharray', `${arc.toFixed(1)} ${circ.toFixed(1)}`);
+    document.getElementById('d-donut-pct').textContent = pct + '%';
+    // Entrance bar
+    const byEntrance = {};
+    guests.filter(g => g.checked_in && g.checked_in_by).forEach(g => {
+      byEntrance[g.checked_in_by] = (byEntrance[g.checked_in_by] || 0) + 1;
+    });
+    const entranceEl = document.getElementById('d-entrance-chart');
+    const maxE = Math.max(...Object.values(byEntrance), 1);
+    if (Object.keys(byEntrance).length === 0) {
+      entranceEl.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;text-align:center;padding:0.5rem">Noch keine Check-ins</div>';
+    } else {
+      entranceEl.innerHTML = Object.entries(byEntrance).sort((a,b) => b[1]-a[1]).map(([name, count]) => {
+        const pctBar = Math.round(count/maxE*100);
+        return `<div><div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.2rem">
+          <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">${escHtml(name)}</span>
+          <span style="color:var(--accent);font-weight:600">${count}</span></div>
+          <div style="background:var(--border);border-radius:4px;height:5px">
+            <div style="background:var(--accent);height:5px;border-radius:4px;width:${pctBar}%;transition:width 0.4s ease"></div>
+          </div></div>`;
+      }).join('');
+    }
+    // Category
+    const byCat = {};
+    guests.forEach(g => {
+      const cat = g.kategorie || 'Sonstige';
+      if (!byCat[cat]) byCat[cat] = { total: 0, checked: 0 };
+      byCat[cat].total++;
+      if (g.checked_in) byCat[cat].checked++;
+    });
+    document.getElementById('d-category-chart').innerHTML = Object.entries(byCat)
+      .sort((a,b) => b[1].total - a[1].total).map(([cat, d]) => {
+        const p = Math.round(d.checked/d.total*100);
+        return `<div><div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:0.2rem">
+          <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${escHtml(cat)}</span>
+          <span style="color:var(--muted)">${d.checked}/${d.total} <span style="color:var(--green)">${p}%</span></span></div>
+          <div style="background:var(--border);border-radius:4px;height:5px">
+            <div style="background:var(--green);height:5px;border-radius:4px;width:${p}%;transition:width 0.4s ease"></div>
+          </div></div>`;
+      }).join('');
+    // Timeline
+    renderDashboardTimeline(guests.filter(g => g.checked_in && g.checked_in_at));
+  } catch(e) { console.error('loadDashboardStats:', e); }
+}
+
+function renderDashboardTimeline(checkedGuests) {
+  const svg = document.getElementById('d-timeline-chart');
+  if (!svg) return;
+  if (checkedGuests.length === 0) {
+    svg.innerHTML = '<text x="50%" y="35" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" fill="#6b6b80">Noch keine Check-ins</text>';
+    return;
+  }
+  const buckets = {};
+  checkedGuests.forEach(g => {
+    const d = new Date(g.checked_in_at);
+    const key = `${d.getHours()}:${d.getMinutes() < 30 ? '00' : '30'}`;
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  const keys = Object.keys(buckets).sort();
+  const vals = keys.map(k => buckets[k]);
+  const maxV = Math.max(...vals, 1);
+  const W = 260, H = 50, pad = 4;
+  const bw = Math.max(8, Math.floor((W - pad*(keys.length+1)) / keys.length));
+  let bars = '';
+  keys.forEach((k, i) => {
+    const bh = Math.round((vals[i]/maxV) * (H-14));
+    const x = pad + i*(bw+pad);
+    const y = H - bh - 12;
+    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="2" fill="url(#dBarGrad)" opacity="0.9"/>`;
+    if (i % 2 === 0 || keys.length <= 6) {
+      bars += `<text x="${x+bw/2}" y="${H}" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="8" fill="#6b6b80">${k}</text>`;
+    }
+    bars += `<text x="${x+bw/2}" y="${y-2}" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="8" fill="var(--accent)" font-weight="bold">${vals[i]}</text>`;
+  });
+  svg.innerHTML = `<defs><linearGradient id="dBarGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#f0c040"/><stop offset="100%" stop-color="#e05a00"/>
+  </linearGradient></defs>${bars}`;
 }
 
 // ── TOASTS ───────────────────────────────────
