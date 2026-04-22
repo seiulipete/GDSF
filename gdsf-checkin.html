@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GDSF · Guest Check-In</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0a0a0f;
+    --surface:  #13131a;
+    --card:     #1a1a24;
+    --border:   #2a2a3a;
+    --accent:   #f0c040;
+    --accent2:  #e05a00;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --text:     #e8e8f0;
+    --muted:    #6b6b80;
+    --vip:      #f0c040;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── LOGIN ─────────────────────────────── */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: radial-gradient(ellipse at 50% 0%, #1a1200 0%, var(--bg) 60%);
+  }
+  .login-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3rem, 12vw, 6rem);
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    text-shadow: 0 0 60px rgba(240,192,64,0.4);
+    line-height: 1;
+    margin-bottom: 0.2rem;
+  }
+  .login-sub {
+    font-size: 0.75rem;
+    letter-spacing: 0.3em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 3rem;
+  }
+  .login-box {
+    width: 100%;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+  }
+  .login-box h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.5rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+  }
+  .form-group { margin-bottom: 1rem; }
+  .form-group label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    padding: 0.75rem 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--accent);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.85rem 1.5rem;
+    cursor: pointer;
+    width: 100%;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:active { transform: scale(0.97); }
+  .btn.secondary {
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn.danger { background: var(--red); color: #fff; }
+  .btn.green { background: var(--green); color: #fff; }
+  .error-msg {
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    color: var(--red);
+    font-size: 0.85rem;
+    padding: 0.6rem 0.9rem;
+    margin-top: 0.8rem;
+    display: none;
+  }
+
+  /* ── MAIN APP ───────────────────────────── */
+  #app { display: none; min-height: 100vh; flex-direction: column; }
+  #app.visible { display: flex; }
+
+  /* Header */
+  .app-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .app-header .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+  .header-event {
+    font-size: 0.75rem;
+    color: var(--muted);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-entrance {
+    font-size: 0.7rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0.25rem 0.75rem;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .header-stat {
+    font-size: 0.7rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .header-logout {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.3rem;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.6rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── CHECK-IN VIEW ──────────────────────── */
+  #view-checkin { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .search-bar {
+    padding: 0.75rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 56px;
+    z-index: 90;
+  }
+  .search-wrap {
+    position: relative;
+  }
+  .search-wrap input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    padding: 0.75rem 1rem 0.75rem 2.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-icon {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 1rem;
+    pointer-events: none;
+  }
+  .search-clear {
+    position: absolute;
+    right: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+    display: none;
+  }
+
+  /* Stats strip */
+  .stats-strip {
+    display: flex;
+    gap: 0;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-item {
+    flex: 1;
+    text-align: center;
+    padding: 0.5rem 0;
+    border-right: 1px solid var(--border);
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
+    line-height: 1;
+  }
+  .stat-num.green { color: var(--green); }
+  .stat-num.yellow { color: var(--accent); }
+  .stat-num.muted { color: var(--muted); }
+  .stat-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 0.1rem;
+  }
+
+  /* Guest list */
+  .guest-list {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .guest-card {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .guest-card:active { background: var(--card); }
+  .guest-card.checked {
+    opacity: 0.5;
+  }
+  .guest-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .guest-card.vip .guest-avatar {
+    border-color: var(--vip);
+    color: var(--vip);
+    background: rgba(240,192,64,0.08);
+  }
+  .vip-star {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    font-size: 0.65rem;
+    background: var(--vip);
+    color: #000;
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .guest-info { flex: 1; min-width: 0; }
+  .guest-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .guest-card.vip .guest-name { color: var(--vip); }
+  .guest-meta {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .guest-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: rgba(240,192,64,0.15);
+    color: var(--vip);
+    border: 1px solid rgba(240,192,64,0.3);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    margin-right: 0.3rem;
+  }
+  .guest-right { flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .checkin-btn {
+    background: var(--green);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  .checkin-btn:active { opacity: 0.8; }
+  .checked-badge {
+    font-size: 0.7rem;
+    color: var(--green);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .checked-time {
+    font-size: 0.6rem;
+    color: var(--muted);
+  }
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; }
+  .empty-state p { font-size: 0.9rem; }
+
+  /* Live feed */
+  .live-feed {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    max-height: 120px;
+    overflow: hidden;
+  }
+  .live-feed-header {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0.4rem 1rem 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .live-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 1rem;
+    font-size: 0.75rem;
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .live-item .name { font-weight: 600; }
+  .live-item .entrance { color: var(--muted); font-size: 0.65rem; }
+
+  /* ── CONFIRM OVERLAY ────────────────────── */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    padding: 1rem;
+  }
+  .overlay.show { opacity: 1; pointer-events: all; }
+  .overlay-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 420px;
+    transform: translateY(20px);
+    transition: transform 0.2s;
+  }
+  .overlay.show .overlay-box { transform: translateY(0); }
+  .overlay-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.5rem;
+  }
+  .overlay-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+  }
+  .overlay-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 1.5rem; }
+  .overlay-vip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(240,192,64,0.15);
+    color: var(--vip);
+    border: 1px solid rgba(240,192,64,0.3);
+    border-radius: 6px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+  .overlay-actions { display: flex; gap: 0.75rem; }
+  .overlay-actions .btn { flex: 1; }
+
+  /* ── SUCCESS FLASH ──────────────────────── */
+  .success-flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(34,197,94,0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .success-flash.show { opacity: 1; }
+  .success-icon {
+    font-size: 5rem;
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  @keyframes pop {
+    from { transform: scale(0); }
+    to { transform: scale(1); }
+  }
+  .success-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 0.08em;
+    margin-top: 0.5rem;
+    color: var(--green);
+  }
+
+  /* ── ADMIN VIEW ─────────────────────────── */
+  #view-admin { flex: 1; overflow-y: auto; padding: 1rem; display: none; flex-direction: column; gap: 1rem; }
+  #view-admin.active { display: flex; }
+
+  .admin-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .admin-section-header {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .admin-section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+  .admin-section-body { padding: 1rem; }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .stat-card .num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem;
+    letter-spacing: 0.05em;
+    line-height: 1;
+  }
+  .stat-card .lbl {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+
+  /* Progress bar */
+  .progress-wrap {
+    background: var(--card);
+    border-radius: 100px;
+    height: 8px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    border-radius: 100px;
+    transition: width 0.5s ease;
+  }
+
+  /* Entrance accounts table */
+  .accounts-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .account-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+  }
+  .account-info { flex: 1; min-width: 0; }
+  .account-name { font-weight: 600; font-size: 0.9rem; }
+  .account-user { font-size: 0.72rem; color: var(--muted); }
+  .account-badge {
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+  }
+  .badge-admin { background: rgba(240,192,64,0.15); color: var(--accent); border: 1px solid rgba(240,192,64,0.3); }
+  .badge-door { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+  .account-actions { display: flex; gap: 0.4rem; }
+  .icon-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.5rem;
+    transition: color 0.15s;
+  }
+  .icon-btn:hover { color: var(--text); }
+  .icon-btn.del:hover { color: var(--red); }
+
+  /* Import area */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.dragging {
+    border-color: var(--accent);
+    background: rgba(240,192,64,0.04);
+  }
+  .drop-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .drop-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .drop-text { font-size: 0.85rem; color: var(--muted); }
+  .drop-text strong { color: var(--text); }
+
+  /* Import preview */
+  .import-preview {
+    display: none;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-top: 0.75rem;
+  }
+  .import-preview.show { display: block; }
+  .import-sheet-tab {
+    display: inline-block;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-right: 0.4rem;
+    margin-bottom: 0.5rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .import-sheet-tab.active { border-color: var(--accent); color: var(--accent); }
+  .import-info { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
+
+  /* Event selector */
+  .event-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .event-pill {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .event-pill.active { border-color: var(--accent); color: var(--accent); }
+  .event-pill.add {
+    border-style: dashed;
+    color: var(--muted);
+  }
+
+  /* Toasts */
+  .toast-container {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.5s forwards;
+  }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+  @keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes toastOut { to { opacity:0; transform:translateY(10px); } }
+
+  /* Modal for new account */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1500;
+    padding: 1rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 380px;
+  }
+  .modal-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.3rem;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+
+  /* Connection indicator */
+  .conn-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  .conn-indicator.connected { background: var(--green); }
+  .conn-indicator.error { background: var(--red); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Responsive */
+  @media (min-width: 600px) {
+    .stats-grid { grid-template-columns: repeat(4, 1fr); }
+    .guest-card { padding: 1rem 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ─────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-logo">GDSF</div>
+  <div class="login-sub">Guest Check-In System</div>
+  <div class="login-box">
+    <h2>Anmelden</h2>
+    <div class="form-group">
+      <label>Benutzername</label>
+      <input type="text" id="login-user" placeholder="z.B. nord" autocomplete="username" autocapitalize="none">
+    </div>
+    <div class="form-group">
+      <label>Passwort</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn" onclick="doLogin()">Einloggen</button>
+    <div class="error-msg" id="login-error">Benutzername oder Passwort falsch.</div>
+  </div>
+</div>
+
+<!-- ── MAIN APP ───────────────────────────── -->
+<div id="app">
+  <!-- Header -->
+  <div class="app-header">
+    <div class="logo">GDSF</div>
+    <div class="header-event" id="header-event-name">–</div>
+    <div class="conn-indicator" id="conn-indicator" title="Verbindung"></div>
+    <div class="header-stat" id="header-stat">0/0</div>
+    <div class="header-entrance" id="header-entrance">–</div>
+    <button class="header-logout" onclick="doLogout()" title="Abmelden">⏻</button>
+  </div>
+
+  <!-- Tabs (only for admin) -->
+  <div class="tab-bar" id="tab-bar" style="display:none">
+    <button class="tab-btn active" onclick="switchTab('checkin')">✓ Check-In</button>
+    <button class="tab-btn" onclick="switchTab('admin')">⚙ Admin</button>
+  </div>
+
+  <!-- CHECK-IN VIEW -->
+  <div id="view-checkin">
+    <!-- Event selector -->
+    <div style="padding:0.5rem 0.75rem; background:var(--card); border-bottom:1px solid var(--border);">
+      <div class="event-pills" id="event-pills-checkin"></div>
+    </div>
+    <!-- Search -->
+    <div class="search-bar">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Name, Nachname oder Firma…" oninput="onSearch()" autocomplete="off" autocapitalize="none">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+      </div>
+    </div>
+    <!-- Stats strip -->
+    <div class="stats-strip">
+      <div class="stat-item">
+        <div class="stat-num green" id="stat-checked">0</div>
+        <div class="stat-label">Eingecheckt</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num muted" id="stat-total">0</div>
+        <div class="stat-label">Gesamt</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num yellow" id="stat-vip">0</div>
+        <div class="stat-label">VIP</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num muted" id="stat-remaining">0</div>
+        <div class="stat-label">Ausstehend</div>
+      </div>
+    </div>
+    <!-- Guest list -->
+    <div class="guest-list" id="guest-list">
+      <div class="empty-state">
+        <div class="icon">🎵</div>
+        <p>Kein Event ausgewählt oder<br>Gästeliste wird geladen…</p>
+      </div>
+    </div>
+    <!-- Live feed -->
+    <div class="live-feed" id="live-feed" style="display:none">
+      <div class="live-feed-header"><div class="live-dot"></div> Live Check-ins</div>
+      <div id="live-feed-items"></div>
+    </div>
+  </div>
+
+  <!-- ADMIN VIEW -->
+  <div id="view-admin">
+    <!-- Stats overview -->
+    <div class="admin-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">📊 Statistiken</div>
+        <div style="font-size:0.72rem;color:var(--muted)" id="admin-event-label">–</div>
+      </div>
+      <div class="admin-section-body">
+        <!-- Event selector admin -->
+        <div class="event-pills" id="event-pills-admin"></div>
+        <div class="stats-grid" id="admin-stats-grid">
+          <div class="stat-card"><div class="num" id="a-total">–</div><div class="lbl">Gäste Gesamt</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--green)" id="a-checked">–</div><div class="lbl">Eingecheckt</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--accent)" id="a-vip">–</div><div class="lbl">VIP</div></div>
+          <div class="stat-card"><div class="num" style="color:var(--muted)" id="a-pending">–</div><div class="lbl">Ausstehend</div></div>
+        </div>
+        <div style="margin-top:0.75rem">
+          <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--muted);margin-bottom:0.3rem">
+            <span>Fortschritt</span><span id="a-pct">0%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" id="a-progress" style="width:0%"></div></div>
+        </div>
+        <div style="margin-top:1rem">
+          <button class="btn secondary" onclick="exportCSV()" style="width:auto;padding:0.5rem 1rem;font-size:0.8rem">📤 CSV Export</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Events management -->
+    <div class="admin-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">📅 Events</div>
+        <button class="btn" style="width:auto;padding:0.4rem 0.9rem;font-size:0.78rem" onclick="showNewEventModal()">+ Neu</button>
+      </div>
+      <div class="admin-section-body">
+        <div id="events-list" style="display:flex;flex-direction:column;gap:0.5rem"></div>
+      </div>
+    </div>
+
+    <!-- Import -->
+    <div class="admin-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">📥 Excel Import</div>
+      </div>
+      <div class="admin-section-body">
+        <div style="margin-bottom:0.75rem;font-size:0.8rem;color:var(--muted)">
+          Ziel-Event für Import:
+        </div>
+        <div class="event-pills" id="event-pills-import"></div>
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" accept=".xlsx,.xls" onchange="handleFileImport(event)">
+          <div class="drop-icon">📂</div>
+          <div class="drop-text"><strong>Excel-Datei wählen</strong><br>oder hierher ziehen (.xlsx)</div>
+        </div>
+        <div class="import-preview" id="import-preview">
+          <div id="import-sheet-tabs"></div>
+          <div class="import-info" id="import-info"></div>
+          <button class="btn green" onclick="confirmImport()">✓ Importieren</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Entrance accounts -->
+    <div class="admin-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">🚪 Eingang-Accounts</div>
+        <button class="btn" style="width:auto;padding:0.4rem 0.9rem;font-size:0.78rem" onclick="showNewAccountModal()">+ Neu</button>
+      </div>
+      <div class="admin-section-body">
+        <div class="accounts-list" id="accounts-list"></div>
+      </div>
+    </div>
+
+    <!-- Danger zone -->
+    <div class="admin-section" style="border-color:rgba(239,68,68,0.3)">
+      <div class="admin-section-header">
+        <div class="admin-section-title" style="color:var(--red)">⚠ Gefahrenzone</div>
+      </div>
+      <div class="admin-section-body" style="display:flex;flex-direction:column;gap:0.5rem">
+        <button class="btn danger" onclick="resetCheckins()">🔄 Alle Check-ins zurücksetzen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONFIRM OVERLAY ───────────────────── -->
+<div class="overlay" id="confirm-overlay">
+  <div class="overlay-box">
+    <div class="overlay-title">Check-In bestätigen</div>
+    <div id="overlay-vip-badge" class="overlay-vip" style="display:none">⭐ VIP GAST</div>
+    <div class="overlay-name" id="overlay-name"></div>
+    <div class="overlay-meta" id="overlay-meta"></div>
+    <div class="overlay-actions">
+      <button class="btn secondary" onclick="closeConfirm()">Abbrechen</button>
+      <button class="btn green" onclick="confirmCheckin()">✓ Einchecken</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SUCCESS FLASH ─────────────────────── -->
+<div class="success-flash" id="success-flash">
+  <div class="success-icon">✅</div>
+  <div class="success-name" id="success-name"></div>
+</div>
+
+<!-- ── MODAL: New Account ────────────────── -->
+<div class="modal-overlay" id="account-modal">
+  <div class="modal-box">
+    <div class="modal-title">Account erstellen</div>
+    <div class="form-group">
+      <label>Anzeigename</label>
+      <input type="text" id="new-acc-name" placeholder="z.B. Eingang Nord">
+    </div>
+    <div class="form-group">
+      <label>Benutzername</label>
+      <input type="text" id="new-acc-user" placeholder="z.B. nord" autocapitalize="none">
+    </div>
+    <div class="form-group">
+      <label>Passwort</label>
+      <input type="text" id="new-acc-pass" placeholder="Passwort wählen">
+    </div>
+    <div class="form-group">
+      <label>Rolle</label>
+      <select id="new-acc-role">
+        <option value="false">Türpersonal</option>
+        <option value="true">Admin</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+      <button class="btn secondary" onclick="closeAccountModal()">Abbrechen</button>
+      <button class="btn" onclick="createAccount()">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: New Event ──────────────────── -->
+<div class="modal-overlay" id="event-modal">
+  <div class="modal-box">
+    <div class="modal-title">Event erstellen</div>
+    <div class="form-group">
+      <label>Event-Name</label>
+      <input type="text" id="new-evt-name" placeholder="z.B. GDSF – Tag 1">
+    </div>
+    <div class="form-group">
+      <label>Datum</label>
+      <input type="date" id="new-evt-date">
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+      <button class="btn secondary" onclick="closeEventModal()">Abbrechen</button>
+      <button class="btn" onclick="createEvent()">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOASTS ────────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────
+const SUPABASE_URL = 'https://xdgufsqaplekmxuiubhu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
+
+// ── STATE ────────────────────────────────────
+let currentUser = null;
+let currentEventId = null;
+let allGuests = [];
+let filteredGuests = [];
+let events = [];
+let pendingCheckin = null;
+let importData = null;
+let importSheetIndex = 0;
+let importEventId = null;
+let realtimeChannel = null;
+
+// ── API HELPERS ──────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : ''
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(SUPABASE_URL + '/rest/v1/' + path, opts);
+  if (!r.ok) {
+    const e = await r.text();
+    throw new Error(e);
+  }
+  const txt = await r.text();
+  return txt ? JSON.parse(txt) : null;
+}
+
+async function get(path) { return api('GET', path); }
+async function post(path, body) { return api('POST', path, body); }
+async function patch(path, body) { return api('PATCH', path, body); }
+async function del(path) { return api('DELETE', path); }
+
+// ── LOGIN ────────────────────────────────────
+async function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  try {
+    const rows = await get(`entrances?username=eq.${encodeURIComponent(user)}&is_active=eq.true&select=*`);
+    if (!rows || rows.length === 0 || rows[0].password_hash !== pass) {
+      errEl.style.display = 'block';
+      return;
+    }
+    currentUser = rows[0];
+    sessionStorage.setItem('gdsf_user', JSON.stringify(currentUser));
+    showApp();
+  } catch(e) {
+    errEl.textContent = 'Verbindungsfehler: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+document.getElementById('login-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('login-user').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-pass').focus();
+});
+
+function doLogout() {
+  sessionStorage.removeItem('gdsf_user');
+  currentUser = null;
+  if (realtimeChannel) realtimeChannel.close();
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+// ── SHOW APP ─────────────────────────────────
+async function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('header-entrance').textContent = currentUser.name;
+  if (currentUser.is_admin) {
+    document.getElementById('tab-bar').style.display = 'flex';
+  }
+  await loadEvents();
+  setupRealtime();
+}
+
+// ── EVENTS ───────────────────────────────────
+async function loadEvents() {
+  events = await get('events?order=event_date.desc&select=*') || [];
+  renderEventPills();
+  if (events.length > 0) {
+    selectEvent(events[0].id);
+  }
+  if (currentUser.is_admin) {
+    renderAdminEventPills();
+    renderEventsList();
+    loadAdminStats();
+    loadAccounts();
+  }
+}
+
+function renderEventPills() {
+  const c = document.getElementById('event-pills-checkin');
+  c.innerHTML = events.map(e =>
+    `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectEvent('${e.id}')">${e.name}</div>`
+  ).join('');
+}
+
+function renderAdminEventPills() {
+  const containers = ['event-pills-admin','event-pills-import'];
+  containers.forEach(id => {
+    const c = document.getElementById(id);
+    if (!c) return;
+    c.innerHTML = events.map(e =>
+      `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectAdminEvent('${e.id}','${id}')">${e.name}</div>`
+    ).join('');
+  });
+  if (events.length > 0 && !importEventId) importEventId = events[0].id;
+}
+
+function selectAdminEvent(id, fromPillsId) {
+  if (fromPillsId === 'event-pills-import') {
+    importEventId = id;
+    document.querySelectorAll('#event-pills-import .event-pill').forEach(p => p.classList.remove('active'));
+  } else {
+    currentEventId = id;
+    document.querySelectorAll('#event-pills-admin .event-pill').forEach(p => p.classList.remove('active'));
+    loadAdminStats();
+  }
+  event && event.target && event.target.classList.add('active');
+}
+
+async function selectEvent(id) {
+  currentEventId = id;
+  renderEventPills();
+  const ev = events.find(e => e.id === id);
+  document.getElementById('header-event-name').textContent = ev ? ev.name : '–';
+  await loadGuests();
+}
+
+// ── GUESTS ───────────────────────────────────
+async function loadGuests() {
+  if (!currentEventId) return;
+  try {
+    allGuests = await get(`guests?event_id=eq.${currentEventId}&order=nachname.asc&select=*`) || [];
+    updateStats();
+    applySearch();
+  } catch(e) {
+    toast('Fehler beim Laden: ' + e.message, 'error');
+  }
+}
+
+function updateStats() {
+  const checked = allGuests.filter(g => g.checked_in).length;
+  const vip = allGuests.filter(g => g.vip).length;
+  document.getElementById('stat-checked').textContent = checked;
+  document.getElementById('stat-total').textContent = allGuests.length;
+  document.getElementById('stat-vip').textContent = vip;
+  document.getElementById('stat-remaining').textContent = allGuests.length - checked;
+  document.getElementById('header-stat').textContent = `${checked}/${allGuests.length}`;
+}
+
+// ── SEARCH ───────────────────────────────────
+function onSearch() {
+  const q = document.getElementById('search-input').value;
+  document.getElementById('search-clear').style.display = q ? 'block' : 'none';
+  applySearch();
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  applySearch();
+}
+
+function applySearch() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  if (!q) {
+    filteredGuests = [...allGuests];
+  } else {
+    filteredGuests = allGuests.filter(g => {
+      const haystack = [g.vorname, g.nachname, g.firma, g.kategorie].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+  // Sort: VIP first, then unchecked, then checked
+  filteredGuests.sort((a, b) => {
+    if (a.checked_in !== b.checked_in) return a.checked_in ? 1 : -1;
+    if (a.vip !== b.vip) return a.vip ? -1 : 1;
+    return (a.nachname || '').localeCompare(b.nachname || '');
+  });
+  renderGuestList();
+}
+
+// ── RENDER GUESTS ────────────────────────────
+function renderGuestList() {
+  const el = document.getElementById('guest-list');
+  if (filteredGuests.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Keine Gäste gefunden.</p></div>`;
+    return;
+  }
+  el.innerHTML = filteredGuests.map(g => {
+    const initials = [(g.vorname||'').charAt(0), (g.nachname||'').charAt(0)].join('').toUpperCase();
+    const fullName = [g.vorname, g.nachname].filter(Boolean).join(' ');
+    const meta = [g.firma, g.kategorie].filter(Boolean).join(' · ');
+    const checkedTime = g.checked_in_at ? new Date(g.checked_in_at).toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'}) : '';
+
+    return `<div class="guest-card ${g.checked_in?'checked':''} ${g.vip?'vip':''}" onclick="openConfirm('${g.id}')">
+      <div class="guest-avatar">
+        ${initials}
+        ${g.vip ? '<div class="vip-star">★</div>' : ''}
+      </div>
+      <div class="guest-info">
+        <div class="guest-name">
+          ${g.vip ? '<span class="guest-badge">VIP</span>' : ''}
+          ${escHtml(fullName)}
+        </div>
+        <div class="guest-meta">${escHtml(meta)}</div>
+        ${g.notiz ? `<div class="guest-meta" style="color:var(--accent);margin-top:0.1rem">📝 ${escHtml(g.notiz)}</div>` : ''}
+      </div>
+      <div class="guest-right">
+        ${g.checked_in
+          ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>`
+          : `<button class="checkin-btn" onclick="event.stopPropagation();openConfirm('${g.id}')">Check-In</button>`
+        }
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── CHECKIN FLOW ─────────────────────────────
+function openConfirm(guestId) {
+  const g = allGuests.find(x => x.id === guestId);
+  if (!g || g.checked_in) return;
+  pendingCheckin = g;
+  const fullName = [g.vorname, g.nachname].filter(Boolean).join(' ');
+  document.getElementById('overlay-name').textContent = fullName;
+  document.getElementById('overlay-meta').textContent = [g.firma, g.kategorie, g.notiz].filter(Boolean).join(' · ');
+  document.getElementById('overlay-vip-badge').style.display = g.vip ? 'inline-flex' : 'none';
+  document.getElementById('confirm-overlay').classList.add('show');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('show');
+  pendingCheckin = null;
+}
+
+async function confirmCheckin() {
+  if (!pendingCheckin) return;
+  const g = pendingCheckin;
+  closeConfirm();
+  try {
+    const now = new Date().toISOString();
+    await patch(`guests?id=eq.${g.id}`, {
+      checked_in: true,
+      checked_in_at: now,
+      checked_in_by: currentUser.name
+    });
+    await post('checkin_log', {
+      guest_id: g.id,
+      event_id: currentEventId,
+      entrance_name: currentUser.name,
+      action: 'checkin'
+    });
+    // Update local state
+    const idx = allGuests.findIndex(x => x.id === g.id);
+    if (idx !== -1) {
+      allGuests[idx].checked_in = true;
+      allGuests[idx].checked_in_at = now;
+      allGuests[idx].checked_in_by = currentUser.name;
+    }
+    updateStats();
+    applySearch();
+    showSuccessFlash([g.vorname, g.nachname].filter(Boolean).join(' '));
+    addLiveFeedItem(g, currentUser.name);
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+  }
+}
+
+function showSuccessFlash(name) {
+  const el = document.getElementById('success-flash');
+  document.getElementById('success-name').textContent = name;
+  el.classList.add('show');
+  // Try vibration
+  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+// ── LIVE FEED ────────────────────────────────
+function addLiveFeedItem(guest, entrance) {
+  const feed = document.getElementById('live-feed');
+  const items = document.getElementById('live-feed-items');
+  feed.style.display = 'block';
+  const name = [guest.vorname, guest.nachname].filter(Boolean).join(' ');
+  const time = new Date().toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'live-item';
+  div.innerHTML = `<span style="color:var(--green)">✓</span><span class="name">${escHtml(name)}</span><span class="entrance">${escHtml(entrance)} · ${time}</span>`;
+  items.insertBefore(div, items.firstChild);
+  // Keep only 3
+  while (items.children.length > 3) items.removeChild(items.lastChild);
+}
+
+// ── REALTIME ─────────────────────────────────
+function setupRealtime() {
+  const indicator = document.getElementById('conn-indicator');
+  // Use Supabase Realtime via REST polling as fallback (simpler, no SDK)
+  // We'll poll every 3 seconds for guest updates
+  let lastPoll = Date.now();
+  indicator.classList.add('connected');
+
+  setInterval(async () => {
+    if (!currentEventId) return;
+    try {
+      const updated = await get(`guests?event_id=eq.${currentEventId}&checked_in=eq.true&checked_in_at=gt.${new Date(lastPoll - 5000).toISOString()}&select=*`);
+      lastPoll = Date.now();
+      if (updated && updated.length > 0) {
+        let changed = false;
+        updated.forEach(g => {
+          const idx = allGuests.findIndex(x => x.id === g.id);
+          if (idx !== -1 && !allGuests[idx].checked_in) {
+            allGuests[idx] = g;
+            changed = true;
+            addLiveFeedItem(g, g.checked_in_by || '–');
+          } else if (idx !== -1) {
+            allGuests[idx] = g;
+          }
+        });
+        if (changed) {
+          updateStats();
+          applySearch();
+        }
+      }
+      indicator.classList.remove('error');
+      indicator.classList.add('connected');
+    } catch(e) {
+      indicator.classList.remove('connected');
+      indicator.classList.add('error');
+    }
+  }, 3000);
+}
+
+// ── ADMIN: STATS ─────────────────────────────
+async function loadAdminStats() {
+  if (!currentEventId) return;
+  const ev = events.find(e => e.id === currentEventId);
+  document.getElementById('admin-event-label').textContent = ev ? ev.name : '–';
+  try {
+    const guests = await get(`guests?event_id=eq.${currentEventId}&select=id,checked_in,vip`) || [];
+    const total = guests.length;
+    const checked = guests.filter(g => g.checked_in).length;
+    const vip = guests.filter(g => g.vip).length;
+    const pct = total > 0 ? Math.round(checked/total*100) : 0;
+    document.getElementById('a-total').textContent = total;
+    document.getElementById('a-checked').textContent = checked;
+    document.getElementById('a-vip').textContent = vip;
+    document.getElementById('a-pending').textContent = total - checked;
+    document.getElementById('a-pct').textContent = pct + '%';
+    document.getElementById('a-progress').style.width = pct + '%';
+  } catch(e) {}
+}
+
+// ── ADMIN: EVENTS LIST ───────────────────────
+function renderEventsList() {
+  const el = document.getElementById('events-list');
+  if (!events.length) { el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">Noch keine Events.</div>'; return; }
+  el.innerHTML = events.map(e => `
+    <div class="account-row">
+      <div class="account-info">
+        <div class="account-name">${escHtml(e.name)}</div>
+        <div class="account-user">${e.event_date ? new Date(e.event_date).toLocaleDateString('de-AT') : '–'}</div>
+      </div>
+      <span class="account-badge ${e.is_active?'badge-door':'badge-admin'}">${e.is_active?'Aktiv':'Inaktiv'}</span>
+      <div class="account-actions">
+        <button class="icon-btn del" onclick="deleteEvent('${e.id}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Event und alle Gäste löschen?')) return;
+  await del(`events?id=eq.${id}`);
+  toast('Event gelöscht');
+  await loadEvents();
+}
+
+function showNewEventModal() {
+  document.getElementById('event-modal').classList.add('show');
+  // default date to today
+  document.getElementById('new-evt-date').value = new Date().toISOString().split('T')[0];
+}
+function closeEventModal() { document.getElementById('event-modal').classList.remove('show'); }
+
+async function createEvent() {
+  const name = document.getElementById('new-evt-name').value.trim();
+  const date = document.getElementById('new-evt-date').value;
+  if (!name || !date) { toast('Name und Datum erforderlich', 'error'); return; }
+  await post('events', { name, event_date: date, is_active: true });
+  closeEventModal();
+  toast('Event erstellt ✓');
+  await loadEvents();
+}
+
+// ── ADMIN: ACCOUNTS ──────────────────────────
+async function loadAccounts() {
+  const rows = await get('entrances?order=is_admin.desc,name.asc&select=*') || [];
+  const el = document.getElementById('accounts-list');
+  el.innerHTML = rows.map(r => `
+    <div class="account-row">
+      <div class="account-info">
+        <div class="account-name">${escHtml(r.name)}</div>
+        <div class="account-user">@${escHtml(r.username)} · ${escHtml(r.password_hash)}</div>
+      </div>
+      <span class="account-badge ${r.is_admin?'badge-admin':'badge-door'}">${r.is_admin?'Admin':'Tür'}</span>
+      <div class="account-actions">
+        <button class="icon-btn del" onclick="deleteAccount('${r.id}','${r.username}')" ${r.username==='admin'?'disabled':''}>🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function showNewAccountModal() { document.getElementById('account-modal').classList.add('show'); }
+function closeAccountModal() { document.getElementById('account-modal').classList.remove('show'); }
+
+async function createAccount() {
+  const name = document.getElementById('new-acc-name').value.trim();
+  const username = document.getElementById('new-acc-user').value.trim().toLowerCase();
+  const pass = document.getElementById('new-acc-pass').value.trim();
+  const is_admin = document.getElementById('new-acc-role').value === 'true';
+  if (!name || !username || !pass) { toast('Alle Felder erforderlich', 'error'); return; }
+  try {
+    await post('entrances', { name, username, password_hash: pass, is_admin, is_active: true });
+    closeAccountModal();
+    toast('Account erstellt ✓');
+    loadAccounts();
+  } catch(e) {
+    toast('Fehler (Benutzername bereits vergeben?)', 'error');
+  }
+}
+
+async function deleteAccount(id, username) {
+  if (!confirm(`Account "@${username}" löschen?`)) return;
+  await del(`entrances?id=eq.${id}`);
+  toast('Account gelöscht');
+  loadAccounts();
+}
+
+// ── IMPORT ───────────────────────────────────
+let importParsed = {};
+let importSheets = [];
+
+function handleFileImport(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+    importParsed = {};
+    importSheets = wb.SheetNames;
+    wb.SheetNames.forEach(name => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
+      importParsed[name] = rows;
+    });
+    importSheetIndex = 0;
+    renderImportPreview();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderImportPreview() {
+  const preview = document.getElementById('import-preview');
+  const tabs = document.getElementById('import-sheet-tabs');
+  const info = document.getElementById('import-info');
+  preview.classList.add('show');
+
+  tabs.innerHTML = importSheets.map((name, i) =>
+    `<span class="import-sheet-tab ${i===importSheetIndex?'active':''}" onclick="selectImportSheet(${i})">${name}</span>`
+  ).join('');
+
+  const sheet = importSheets[importSheetIndex];
+  const rows = importParsed[sheet] || [];
+  info.textContent = `${rows.length} Gäste in Sheet "${sheet}"`;
+}
+
+function selectImportSheet(i) {
+  importSheetIndex = i;
+  renderImportPreview();
+}
+
+async function confirmImport() {
+  if (!importEventId) {
+    toast('Bitte zuerst ein Ziel-Event auswählen', 'error');
+    return;
+  }
+  const sheet = importSheets[importSheetIndex];
+  const rows = importParsed[sheet] || [];
+  if (rows.length === 0) { toast('Keine Daten', 'error'); return; }
+
+  toast(`Importiere ${rows.length} Gäste…`);
+
+  const guests = rows.map(r => ({
+    event_id: importEventId,
+    gl: r['GL'] ? true : false,
+    vip: r['VIP'] ? true : false,
+    vorname: r['Vorname'] || null,
+    nachname: r['Nachname'] || '',
+    firma: r['Firma / Organisation / Beschreibung'] || null,
+    kategorie: r['Kategorie'] || null,
+    notiz: r['Notiz'] || null,
+    checked_in: false
+  }));
+
+  // Batch insert in chunks of 100
+  try {
+    for (let i = 0; i < guests.length; i += 100) {
+      await post('guests', guests.slice(i, i+100));
+    }
+    toast(`✓ ${guests.length} Gäste importiert!`, 'success');
+    document.getElementById('import-preview').classList.remove('show');
+    if (currentEventId === importEventId) await loadGuests();
+    loadAdminStats();
+  } catch(e) {
+    toast('Import-Fehler: ' + e.message, 'error');
+  }
+}
+
+// ── EXPORT ───────────────────────────────────
+async function exportCSV() {
+  if (!currentEventId) return;
+  const guests = await get(`guests?event_id=eq.${currentEventId}&order=nachname.asc&select=*`) || [];
+  const ev = events.find(e => e.id === currentEventId);
+  const headers = ['Vorname','Nachname','Firma','Kategorie','VIP','GL','Eingecheckt','Uhrzeit','Eingang','Notiz'];
+  const rows = guests.map(g => [
+    g.vorname||'', g.nachname||'', g.firma||'', g.kategorie||'',
+    g.vip?'Ja':'Nein', g.gl?'Ja':'Nein',
+    g.checked_in?'Ja':'Nein',
+    g.checked_in_at ? new Date(g.checked_in_at).toLocaleTimeString('de-AT') : '',
+    g.checked_in_by||'', g.notiz||''
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `GDSF_${(ev?.name||'Export').replace(/\s/g,'_')}.csv`;
+  a.click();
+}
+
+// ── DANGER ZONE ──────────────────────────────
+async function resetCheckins() {
+  if (!currentEventId) return;
+  if (!confirm('Wirklich ALLE Check-ins für dieses Event zurücksetzen?')) return;
+  await patch(`guests?event_id=eq.${currentEventId}`, { checked_in: false, checked_in_at: null, checked_in_by: null });
+  toast('Check-ins zurückgesetzt');
+  await loadGuests();
+  loadAdminStats();
+}
+
+// ── TAB SWITCHING ────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='checkin')||(i===1&&tab==='admin')));
+  document.getElementById('view-checkin').style.display = tab === 'checkin' ? 'flex' : 'none';
+  const adminView = document.getElementById('view-admin');
+  adminView.style.display = tab === 'admin' ? 'flex' : 'none';
+  adminView.classList.toggle('active', tab === 'admin');
+  if (tab === 'admin') {
+    renderAdminEventPills();
+    loadAdminStats();
+    loadAccounts();
+    renderEventsList();
+  }
+}
+
+// ── TOASTS ───────────────────────────────────
+function toast(msg, type='') {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── DRAG & DROP ──────────────────────────────
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileImport({target:{files:[file]}});
+});
+
+// ── CLOSE OVERLAYS ON BACKDROP ───────────────
+document.getElementById('confirm-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeConfirm();
+});
+document.getElementById('account-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeAccountModal();
+});
+document.getElementById('event-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEventModal();
+});
+
+// ── AUTO-LOGIN from session ──────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = sessionStorage.getItem('gdsf_user');
+  if (saved) {
+    currentUser = JSON.parse(saved);
+    showApp();
+  }
+});
+</script>
+</body>
+</html>
