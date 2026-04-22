@@ -1052,7 +1052,7 @@
     </div>
     <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
       <button class="btn secondary" onclick="closeAccountModal()">Abbrechen</button>
-      <button class="btn" onclick="createAccount()">Erstellen</button>
+      <button class="btn" onclick="saveNewAccount()">Erstellen</button>
     </div>
   </div>
 </div>
@@ -1072,7 +1072,7 @@
     <div id="event-modal-error" style="display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#ef4444;font-size:0.78rem;padding:0.5rem 0.75rem;margin-top:0.5rem;word-break:break-all;"></div>
     <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
       <button class="btn secondary" onclick="closeEventModal()">Abbrechen</button>
-      <button class="btn" id="create-event-btn" onclick="createEvent()">Erstellen</button>
+      <button class="btn" id="create-event-btn" onclick="saveNewEvent()">Erstellen</button>
     </div>
   </div>
 </div>
@@ -1522,7 +1522,7 @@ function showNewEventModal() {
 }
 function closeEventModal() { document.getElementById('event-modal').classList.remove('show'); }
 
-async function createEvent() {
+async function saveNewEvent() {
   const name = document.getElementById('new-evt-name').value.trim();
   const date = document.getElementById('new-evt-date').value;
   const errEl = document.getElementById('event-modal-error');
@@ -1580,7 +1580,7 @@ async function loadAccounts() {
 function showNewAccountModal() { document.getElementById('account-modal').classList.add('show'); }
 function closeAccountModal() { document.getElementById('account-modal').classList.remove('show'); }
 
-async function createAccount() {
+async function saveNewAccount() {
   const name = document.getElementById('new-acc-name').value.trim();
   const username = document.getElementById('new-acc-user').value.trim().toLowerCase();
   const pass = document.getElementById('new-acc-pass').value.trim();
