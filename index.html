@@ -1192,7 +1192,6 @@ async function showApp() {
   if (currentUser.is_admin) {
     document.getElementById('tab-bar').style.display = 'flex';
   }
-  await testConnection();
   await loadEvents();
   setupRealtime();
 }
@@ -1235,12 +1234,17 @@ function selectAdminEvent(id, fromPillsId) {
   if (fromPillsId === 'event-pills-import') {
     importEventId = id;
     document.querySelectorAll('#event-pills-import .event-pill').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#event-pills-import .event-pill').forEach(p => {
+      if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
+    });
   } else {
     currentEventId = id;
     document.querySelectorAll('#event-pills-admin .event-pill').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#event-pills-admin .event-pill').forEach(p => {
+      if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
+    });
     loadAdminStats();
   }
-  event && event.target && event.target.classList.add('active');
 }
 
 async function selectEvent(id) {
@@ -1427,11 +1431,16 @@ function setupRealtime() {
   let lastPoll = Date.now();
   indicator.classList.add('connected');
 
-  setInterval(async () => {
+  let pollInterval = 6000;
+  let failCount = 0;
+
+  async function doPoll() {
     if (!currentEventId) return;
     try {
-      const updated = await get(`guests?event_id=eq.${currentEventId}&checked_in=eq.true&checked_in_at=gt.${new Date(lastPoll - 5000).toISOString()}&select=*`);
+      const since = new Date(lastPoll - 8000).toISOString();
+      const updated = await get(`guests?event_id=eq.${currentEventId}&checked_in=eq.true&checked_in_at=gt.${since}&select=*`);
       lastPoll = Date.now();
+      failCount = 0;
       if (updated && updated.length > 0) {
         let changed = false;
         updated.forEach(g => {
@@ -1444,18 +1453,21 @@ function setupRealtime() {
             allGuests[idx] = g;
           }
         });
-        if (changed) {
-          updateStats();
-          applySearch();
-        }
+        if (changed) { updateStats(); applySearch(); }
       }
       indicator.classList.remove('error');
       indicator.classList.add('connected');
     } catch(e) {
+      failCount++;
       indicator.classList.remove('connected');
       indicator.classList.add('error');
+      // Exponential backoff on errors (max 30s)
+      pollInterval = Math.min(30000, 6000 * Math.pow(1.5, failCount));
     }
-  }, 3000);
+    setTimeout(doPoll, pollInterval);
+  }
+
+  setTimeout(doPoll, pollInterval);
 }
 
 // ── ADMIN: STATS ─────────────────────────────
