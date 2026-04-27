@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v3.2</title>
+<title>GDSF · Guest Check-In v3.3</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -2062,12 +2062,60 @@ async function loadAccounts() {
   el.innerHTML = '';
   rows.forEach(function(r) {
     if (editingAccountId === r.id) {
-      // Edit mode
+      // Edit mode – pure DOM, no innerHTML to avoid quote issues
       const row = document.createElement('div');
       row.className = 'account-row';
       row.id = 'acc-edit-' + r.id;
       row.style.cssText = 'flex-direction:column;align-items:stretch;gap:0.5rem';
-      row.innerHTML = '<div style="display:flex;gap:0.5rem"><input id="en-' + r.id + '" value="' + escHtml(r.name) + '" placeholder="Name" style="flex:1;background:var(--card);border:1px solid var(--accent);border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem"><input id="eu-' + r.id + '" value="' + escHtml(r.username) + '" placeholder="Username" style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem"></div><div style="display:flex;gap:0.5rem;align-items:center"><input id="ep-' + r.id + '" placeholder="Neues Passwort (leer = unverändert)" style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem"><button onclick="genMagicCode('ep-' + r.id + '')" class="icon-btn" title="Magic Code" style="padding:0.4rem 0.6rem;font-size:1rem">🎲</button></div><div style="display:flex;gap:0.5rem;align-items:center"><select id="er-' + r.id + '" style="background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.4rem 0.5rem;font-family:inherit;font-size:0.82rem"><option value="false"' + (!r.is_admin?' selected':'') + '>Türpersonal</option><option value="true"' + (r.is_admin?' selected':'') + '>Admin</option></select><button class="btn green" onclick="saveAccountEdit('' + r.id + '')" style="flex:1;font-size:0.8rem;padding:0.4rem 0.75rem">✓ Speichern</button><button class="btn secondary" onclick="cancelAccountEdit()" style="width:auto;font-size:0.8rem;padding:0.4rem 0.75rem">✕</button></div>';
+
+      function mkInput(id, val, ph, accentBorder) {
+        const inp = document.createElement('input');
+        inp.id = id; if (val !== null) inp.value = val; inp.placeholder = ph;
+        inp.style.cssText = 'flex:1;background:var(--card);border:1px solid ' + (accentBorder ? 'var(--accent)' : 'var(--border)') + ';border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem';
+        return inp;
+      }
+
+      // Row 1: Name + Username
+      const row1 = document.createElement('div');
+      row1.style.cssText = 'display:flex;gap:0.5rem';
+      row1.appendChild(mkInput('en-'+r.id, r.name, 'Name', true));
+      row1.appendChild(mkInput('eu-'+r.id, r.username, 'Username', false));
+
+      // Row 2: Password + Magic Code button
+      const row2 = document.createElement('div');
+      row2.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
+      row2.appendChild(mkInput('ep-'+r.id, null, 'Neues Passwort (leer = unverändert)', false));
+      const btnMagic = document.createElement('button');
+      btnMagic.className = 'icon-btn'; btnMagic.title = 'Magic Code';
+      btnMagic.textContent = '🎲'; btnMagic.style.cssText = 'padding:0.4rem 0.6rem;font-size:1rem';
+      (function(id){ btnMagic.onclick = function(){ genMagicCode('ep-'+id); }; })(r.id);
+      row2.appendChild(btnMagic);
+
+      // Row 3: Role + Save + Cancel
+      const row3 = document.createElement('div');
+      row3.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
+      const sel = document.createElement('select');
+      sel.id = 'er-'+r.id;
+      sel.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.4rem 0.5rem;font-family:inherit;font-size:0.82rem';
+      ['false:Türpersonal','true:Admin'].forEach(function(pair){
+        const parts = pair.split(':');
+        const opt = document.createElement('option');
+        opt.value = parts[0]; opt.textContent = parts[1];
+        if ((parts[0] === 'true') === !!r.is_admin) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      const btnSave = document.createElement('button');
+      btnSave.className = 'btn green'; btnSave.textContent = '✓ Speichern';
+      btnSave.style.cssText = 'flex:1;font-size:0.8rem;padding:0.4rem 0.75rem';
+      (function(id){ btnSave.onclick = function(){ saveAccountEdit(id); }; })(r.id);
+      const btnCancel = document.createElement('button');
+      btnCancel.className = 'btn secondary'; btnCancel.textContent = '✕';
+      btnCancel.style.cssText = 'width:auto;font-size:0.8rem;padding:0.4rem 0.75rem';
+      btnCancel.onclick = cancelAccountEdit;
+      row3.appendChild(sel); row3.appendChild(btnSave); row3.appendChild(btnCancel);
+
+      row.appendChild(row1); row.appendChild(row2); row.appendChild(row3);
+      el.appendChild(row);
       el.appendChild(row);
     } else {
       // View mode
