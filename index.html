@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v3.3</title>
+<title>GDSF · Guest Check-In v3.4</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -2056,71 +2056,92 @@ async function saveNewEvent() {
 // ── ADMIN: ACCOUNTS ──────────────────────────
 let editingAccountId = null;
 
+function makeInput(idStr, valStr, phStr, accent) {
+  var inp = document.createElement('input');
+  inp.id = idStr;
+  if (valStr !== null) inp.value = valStr;
+  inp.placeholder = phStr;
+  var border = accent ? 'var(--accent)' : 'var(--border)';
+  inp.style.cssText = 'flex:1;background:var(--card);border:1px solid ' + border + ';border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem';
+  return inp;
+}
+
 async function loadAccounts() {
   const rows = await get('entrances?order=is_admin.desc,name.asc&select=*') || [];
   const el = document.getElementById('accounts-list');
   el.innerHTML = '';
+
   rows.forEach(function(r) {
     if (editingAccountId === r.id) {
-      // Edit mode – pure DOM, no innerHTML to avoid quote issues
+      // ── EDIT MODE ──
       const row = document.createElement('div');
       row.className = 'account-row';
       row.id = 'acc-edit-' + r.id;
       row.style.cssText = 'flex-direction:column;align-items:stretch;gap:0.5rem';
 
-      function mkInput(id, val, ph, accentBorder) {
-        const inp = document.createElement('input');
-        inp.id = id; if (val !== null) inp.value = val; inp.placeholder = ph;
-        inp.style.cssText = 'flex:1;background:var(--card);border:1px solid ' + (accentBorder ? 'var(--accent)' : 'var(--border)') + ';border-radius:6px;color:var(--text);padding:0.45rem 0.6rem;font-family:inherit;font-size:0.85rem';
-        return inp;
-      }
-
       // Row 1: Name + Username
       const row1 = document.createElement('div');
       row1.style.cssText = 'display:flex;gap:0.5rem';
-      row1.appendChild(mkInput('en-'+r.id, r.name, 'Name', true));
-      row1.appendChild(mkInput('eu-'+r.id, r.username, 'Username', false));
+      row1.appendChild(makeInput('en-' + r.id, r.name, 'Name', true));
+      row1.appendChild(makeInput('eu-' + r.id, r.username, 'Username', false));
 
-      // Row 2: Password + Magic Code button
+      // Row 2: Password + Magic Code
       const row2 = document.createElement('div');
       row2.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
-      row2.appendChild(mkInput('ep-'+r.id, null, 'Neues Passwort (leer = unverändert)', false));
-      const btnMagic = document.createElement('button');
-      btnMagic.className = 'icon-btn'; btnMagic.title = 'Magic Code';
-      btnMagic.textContent = '🎲'; btnMagic.style.cssText = 'padding:0.4rem 0.6rem;font-size:1rem';
-      (function(id){ btnMagic.onclick = function(){ genMagicCode('ep-'+id); }; })(r.id);
-      row2.appendChild(btnMagic);
+      const inPass = makeInput('ep-' + r.id, null, 'Neues Passwort (leer = unverändert)', false);
+      const btnM = document.createElement('button');
+      btnM.className = 'icon-btn';
+      btnM.title = 'Magic Code';
+      btnM.textContent = '🎲';
+      btnM.style.cssText = 'padding:0.4rem 0.6rem;font-size:1rem';
+      btnM.setAttribute('data-pid', r.id);
+      btnM.addEventListener('click', function() { genMagicCode('ep-' + this.getAttribute('data-pid')); });
+      row2.appendChild(inPass);
+      row2.appendChild(btnM);
 
-      // Row 3: Role + Save + Cancel
+      // Row 3: Role selector + Save + Cancel
       const row3 = document.createElement('div');
       row3.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
-      const sel = document.createElement('select');
-      sel.id = 'er-'+r.id;
-      sel.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.4rem 0.5rem;font-family:inherit;font-size:0.82rem';
-      ['false:Türpersonal','true:Admin'].forEach(function(pair){
-        const parts = pair.split(':');
-        const opt = document.createElement('option');
-        opt.value = parts[0]; opt.textContent = parts[1];
-        if ((parts[0] === 'true') === !!r.is_admin) opt.selected = true;
-        sel.appendChild(opt);
-      });
-      const btnSave = document.createElement('button');
-      btnSave.className = 'btn green'; btnSave.textContent = '✓ Speichern';
-      btnSave.style.cssText = 'flex:1;font-size:0.8rem;padding:0.4rem 0.75rem';
-      (function(id){ btnSave.onclick = function(){ saveAccountEdit(id); }; })(r.id);
-      const btnCancel = document.createElement('button');
-      btnCancel.className = 'btn secondary'; btnCancel.textContent = '✕';
-      btnCancel.style.cssText = 'width:auto;font-size:0.8rem;padding:0.4rem 0.75rem';
-      btnCancel.onclick = cancelAccountEdit;
-      row3.appendChild(sel); row3.appendChild(btnSave); row3.appendChild(btnCancel);
 
-      row.appendChild(row1); row.appendChild(row2); row.appendChild(row3);
+      const sel = document.createElement('select');
+      sel.id = 'er-' + r.id;
+      sel.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.4rem 0.5rem;font-family:inherit;font-size:0.82rem';
+      const optTuer = document.createElement('option');
+      optTuer.value = 'false'; optTuer.textContent = 'Türpersonal';
+      if (!r.is_admin) optTuer.selected = true;
+      const optAdmin = document.createElement('option');
+      optAdmin.value = 'true'; optAdmin.textContent = 'Admin';
+      if (r.is_admin) optAdmin.selected = true;
+      sel.appendChild(optTuer);
+      sel.appendChild(optAdmin);
+
+      const btnSave = document.createElement('button');
+      btnSave.className = 'btn green';
+      btnSave.textContent = '✓ Speichern';
+      btnSave.style.cssText = 'flex:1;font-size:0.8rem;padding:0.4rem 0.75rem';
+      btnSave.setAttribute('data-rid', r.id);
+      btnSave.addEventListener('click', function() { saveAccountEdit(this.getAttribute('data-rid')); });
+
+      const btnCan = document.createElement('button');
+      btnCan.className = 'btn secondary';
+      btnCan.textContent = '✕';
+      btnCan.style.cssText = 'width:auto;font-size:0.8rem;padding:0.4rem 0.75rem';
+      btnCan.addEventListener('click', cancelAccountEdit);
+
+      row3.appendChild(sel);
+      row3.appendChild(btnSave);
+      row3.appendChild(btnCan);
+
+      row.appendChild(row1);
+      row.appendChild(row2);
+      row.appendChild(row3);
       el.appendChild(row);
-      el.appendChild(row);
+
     } else {
-      // View mode
+      // ── VIEW MODE ──
       const row = document.createElement('div');
       row.className = 'account-row';
+
       const info = document.createElement('div');
       info.className = 'account-info';
       const nameDiv = document.createElement('div');
@@ -2128,26 +2149,34 @@ async function loadAccounts() {
       nameDiv.textContent = r.name;
       const userDiv = document.createElement('div');
       userDiv.className = 'account-user';
-      userDiv.textContent = '@' + r.username + ' · ' + '•'.repeat(Math.min((r.password_hash||'').length, 8));
+      userDiv.textContent = '@' + r.username + ' · ' + '•'.repeat(Math.min((r.password_hash || '').length, 8));
       info.appendChild(nameDiv);
       info.appendChild(userDiv);
       row.appendChild(info);
+
       const badge = document.createElement('span');
       badge.className = 'account-badge ' + (r.is_admin ? 'badge-admin' : 'badge-door');
       badge.textContent = r.is_admin ? 'Admin' : 'Tür';
       row.appendChild(badge);
+
       const actions = document.createElement('div');
       actions.className = 'account-actions';
+
       const btnEdit = document.createElement('button');
       btnEdit.className = 'icon-btn';
       btnEdit.title = 'Bearbeiten';
       btnEdit.textContent = '✏️';
-      btnEdit.onclick = function() { startAccountEdit(r.id); };
+      btnEdit.setAttribute('data-rid', r.id);
+      btnEdit.addEventListener('click', function() { startAccountEdit(this.getAttribute('data-rid')); });
+
       const btnDel = document.createElement('button');
       btnDel.className = 'icon-btn del';
       btnDel.textContent = '🗑';
-      btnDel.disabled = r.username === 'admin';
-      btnDel.onclick = function() { deleteAccount(r.id, r.username); };
+      btnDel.disabled = (r.username === 'admin');
+      btnDel.setAttribute('data-rid', r.id);
+      btnDel.setAttribute('data-user', r.username);
+      btnDel.addEventListener('click', function() { deleteAccount(this.getAttribute('data-rid'), this.getAttribute('data-user')); });
+
       actions.appendChild(btnEdit);
       actions.appendChild(btnDel);
       row.appendChild(actions);
@@ -2155,7 +2184,6 @@ async function loadAccounts() {
     }
   });
 }
-
 function startAccountEdit(id) {
   editingAccountId = id;
   loadAccounts();
