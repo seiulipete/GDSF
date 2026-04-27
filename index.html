@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v3.4</title>
+<title>GDSF · Guest Check-In v3.5</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1447,7 +1447,12 @@ async function showApp() {
 
 // ── EVENTS ───────────────────────────────────
 async function loadEvents() {
-  events = await get('events?order=sort_order.asc,event_date.desc&select=*') || [];
+  // Load events – sort_order column is optional (run ALTER TABLE if missing)
+  let rawEvents = await get('events?order=event_date.asc&select=*') || [];
+  events = rawEvents.sort(function(a, b) {
+    if (a.sort_order != null && b.sort_order != null) return a.sort_order - b.sort_order;
+    return (a.event_date || '').localeCompare(b.event_date || '');
+  });
   renderEventPills();
   if (events.length > 0) {
     selectEvent(events[0].id);
@@ -2614,7 +2619,7 @@ const manifestData = {
   name: "GDSF Guest Check-In",
   short_name: "GDSF Check-In",
   description: "Festival Guest Check-In System",
-  start_url: "./",
+  start_url: location.pathname.replace(/[^/]*$/, "") || "/",
   display: "standalone",
   background_color: "#0a0a0f",
   theme_color: "#0a0a0f",
