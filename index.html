@@ -1164,16 +1164,67 @@
       </div>
     </div>
 
+    <!-- Google Sheets Sync -->
+    <div class="admin-section" id="sheets-section">
+      <div class="admin-section-header">
+        <div class="admin-section-title">🔗 Google Sheets Sync</div>
+        <div id="sheets-sync-status" style="font-size:0.65rem;padding:0.2rem 0.6rem;border-radius:10px;background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.25)">Verbunden</div>
+      </div>
+      <div class="admin-section-body">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem;line-height:1.5">
+          Die Gästeliste wird bidirektional mit Google Sheets synchronisiert. Check-ins werden sofort ins Sheet zurückgeschrieben.
+        </div>
+
+        <!-- Sheet Link + Tab Selector -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.7rem 0.85rem;margin-bottom:0.75rem">
+          <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem">
+            <span style="font-size:1rem">📊</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.1rem">Verknüpftes Sheet</div>
+              <a href="https://docs.google.com/spreadsheets/d/1hBhtL9iBaxg8P62D1zGJm5beJSvccCy3USfWU9M3LK0/edit" target="_blank"
+                 style="color:var(--accent);text-decoration:none;font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
+                Gästeliste-2026 ↗
+              </a>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);white-space:nowrap">Tab / Tag:</span>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap" id="sheet-tab-pills">
+              <button onclick="selectSheetTab('28.08.26', this)" class="event-pill active" style="border-color:var(--accent);color:var(--accent)">28.08.26</button>
+              <button onclick="selectSheetTab('29.08.26', this)" class="event-pill">29.08.26</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ziel-Event für Sync -->
+        <div style="margin-bottom:0.6rem;font-size:0.78rem;color:var(--muted)">Ziel-Event für Sync:</div>
+        <div class="event-pills" id="event-pills-import"></div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.75rem">
+          <button class="btn" id="sheets-sync-btn" onclick="syncFromSheets()" style="background:var(--accent);color:#000">
+            ↓ Gäste aus Google Sheets laden
+          </button>
+          <button class="btn secondary" id="sheets-push-btn" onclick="pushAllCheckinsToSheets()" style="font-size:0.82rem">
+            ↑ Alle Check-ins → Google Sheets schreiben
+          </button>
+        </div>
+
+        <!-- Sync Log -->
+        <div id="sheets-log" style="display:none;margin-top:0.75rem;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.7rem;font-size:0.72rem;color:var(--muted);line-height:1.6;max-height:120px;overflow-y:auto;font-family:monospace"></div>
+      </div>
+    </div>
+
     <!-- Import -->
     <div class="admin-section">
       <div class="admin-section-header">
-        <div class="admin-section-title">📥 Excel Import</div>
+        <div class="admin-section-title">📥 Excel Import (lokal)</div>
       </div>
       <div class="admin-section-body">
         <div style="margin-bottom:0.75rem;font-size:0.8rem;color:var(--muted)">
           Ziel-Event für Import:
         </div>
-        <div class="event-pills" id="event-pills-import"></div>
+        <div class="event-pills" id="event-pills-import-local"></div>
         <div class="drop-zone" id="drop-zone">
           <input type="file" accept=".xlsx,.xls" onchange="handleFileImport(event)">
           <div class="drop-icon">📂</div>
@@ -1403,5 +1454,308 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="gdsf-config.js"></script>
 <script src="gdsf-app.js"></script>
+<script>
+// ============================================================
+// GOOGLE SHEETS BIDIRECTIONAL SYNC
+// ============================================================
+const SHEETS_API_KEY = 'AIzaSyA-YQ6yibbvwvKwzqEdKDfhcFqwkmcyCb8';
+const SHEET_ID = '1hBhtL9iBaxg8P62D1zGJm5beJSvccCy3USfWU9M3LK0';
+const SHEET_TABS = ['28.08.26', '29.08.26'];
+let SHEET_NAME = SHEET_TABS[0]; // Default: first tab
+
+function sheetsLog(msg) {
+  const log = document.getElementById('sheets-log');
+  if (!log) return;
+  log.style.display = 'block';
+  const ts = new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  log.innerHTML += `[${ts}] ${msg}\n`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function setSheetsStatus(status, msg) {
+  const el = document.getElementById('sheets-sync-status');
+  if (!el) return;
+  if (status === 'syncing') {
+    el.style.background = 'rgba(240,192,64,0.12)';
+    el.style.color = 'var(--accent)';
+    el.style.borderColor = 'rgba(240,192,64,0.3)';
+    el.textContent = '⏳ ' + (msg || 'Sync…');
+  } else if (status === 'ok') {
+    el.style.background = 'rgba(34,197,94,0.12)';
+    el.style.color = 'var(--green)';
+    el.style.borderColor = 'rgba(34,197,94,0.25)';
+    el.textContent = '✓ ' + (msg || 'Verbunden');
+  } else {
+    el.style.background = 'rgba(239,68,68,0.12)';
+    el.style.color = 'var(--red)';
+    el.style.borderColor = 'rgba(239,68,68,0.3)';
+    el.textContent = '✗ ' + (msg || 'Fehler');
+  }
+}
+
+// ── READ FROM SHEETS → SUPABASE ──────────────────────────
+async function syncFromSheets() {
+  const btn = document.getElementById('sheets-sync-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Lädt…'; }
+  setSheetsStatus('syncing', 'Lade Daten…');
+  sheetsLog('Starte Sync von Google Sheets…');
+
+  try {
+    const range = encodeURIComponent(`${SHEET_NAME}!A:N`);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${SHEETS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+
+    if (!data.values || data.values.length < 2) {
+      sheetsLog('⚠ Keine Daten im Sheet gefunden.');
+      setSheetsStatus('ok', 'Leer');
+      return;
+    }
+
+    const headers = data.values[0].map(h => h.toString().toLowerCase().trim().replace(/[^a-z0-9_]/g,'_'));
+    const rows = data.values.slice(1);
+    sheetsLog(`${rows.length} Zeilen im Sheet gefunden.`);
+
+    // Determine target event
+    const targetEventId = getSelectedEventIdForImport();
+    if (!targetEventId) {
+      sheetsLog('⚠ Kein Ziel-Event ausgewählt!');
+      if (typeof showToast === 'function') showToast('Bitte zuerst ein Event auswählen', 'error');
+      setSheetsStatus('error', 'Kein Event');
+      return;
+    }
+
+    let added = 0, updated = 0, skipped = 0;
+
+    for (const row of rows) {
+      if (!row || row.length === 0) continue;
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (row[i] || '').toString().trim(); });
+
+      const id = obj['id'] || '';
+      if (!id) { skipped++; continue; }
+
+      const guestData = {
+        id,
+        event_id: obj['event_id'] || targetEventId,
+        gl: obj['gl'] === 'TRUE' || obj['gl'] === 'true' || obj['gl'] === '1',
+        vip: obj['vip'] === 'TRUE' || obj['vip'] === 'true' || obj['vip'] === '1',
+        vorname: obj['vorname'] || '',
+        nachname: obj['nachname'] || '',
+        firma: obj['firma'] || '',
+        kategorie: obj['kategorie'] || '',
+        notiz: obj['notiz'] || '',
+      };
+
+      // Don't overwrite checkin status from sheet if already checked in Supabase
+      const sbUrl = window.SUPABASE_URL || (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL);
+      const sbKey = window.SUPABASE_KEY || (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY);
+
+      if (!sbUrl || !sbKey) {
+        sheetsLog('⚠ Supabase-Konfiguration fehlt!');
+        break;
+      }
+
+      // Check if guest exists
+      const checkRes = await fetch(`${sbUrl}/rest/v1/guests?id=eq.${encodeURIComponent(id)}&select=id,checked_in`, {
+        headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}` }
+      });
+      const existing = checkRes.ok ? await checkRes.json() : [];
+
+      if (existing.length === 0) {
+        // Insert new guest
+        const insertRes = await fetch(`${sbUrl}/rest/v1/guests`, {
+          method: 'POST',
+          headers: {
+            'apikey': sbKey,
+            'Authorization': `Bearer ${sbKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(guestData)
+        });
+        if (insertRes.ok || insertRes.status === 201) { added++; }
+        else { sheetsLog(`✗ Fehler bei ${guestData.nachname}: ${insertRes.status}`); }
+      } else {
+        // Update only non-checkin fields
+        const patchRes = await fetch(`${sbUrl}/rest/v1/guests?id=eq.${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': sbKey,
+            'Authorization': `Bearer ${sbKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({
+            vorname: guestData.vorname,
+            nachname: guestData.nachname,
+            firma: guestData.firma,
+            kategorie: guestData.kategorie,
+            notiz: guestData.notiz,
+            gl: guestData.gl,
+            vip: guestData.vip,
+          })
+        });
+        if (patchRes.ok) { updated++; }
+      }
+    }
+
+    sheetsLog(`✓ Fertig: ${added} neu, ${updated} aktualisiert, ${skipped} übersprungen.`);
+    setSheetsStatus('ok', `+${added} / ↑${updated}`);
+    if (typeof showToast === 'function') showToast(`✓ Sync: ${added} neu, ${updated} aktualisiert`, 'success');
+    // Reload guests
+    if (typeof loadGuests === 'function') setTimeout(loadGuests, 500);
+
+  } catch(e) {
+    sheetsLog(`✗ Fehler: ${e.message}`);
+    setSheetsStatus('error', 'Fehler');
+    console.error('Sheets sync error:', e);
+    if (typeof showToast === 'function') showToast('Sheets Sync fehlgeschlagen: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↓ Gäste aus Google Sheets laden'; }
+  }
+}
+
+// ── WRITE CHECK-IN BACK TO SHEETS ────────────────────────
+async function writeCheckinToSheets(guestId, checkedIn, checkedInAt, checkedInBy) {
+  try {
+    // Find row number by ID
+    const range = encodeURIComponent(`${SHEET_NAME}!A:A`);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${SHEETS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.values) return;
+
+    const rowIndex = data.values.findIndex(r => r[0] === guestId);
+    if (rowIndex < 0) {
+      console.warn('Guest not found in sheet:', guestId);
+      return;
+    }
+
+    const sheetRow = rowIndex + 1; // 1-indexed
+    // Columns: A=id, B=event_id, C=gl, D=vip, E=vorname, F=nachname, G=firma, H=kategorie, I=notiz, J=checked_in, K=checked_in_at, L=checked_in_by
+    const updateRange = encodeURIComponent(`${SHEET_NAME}!J${sheetRow}:L${sheetRow}`);
+    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${updateRange}?valueInputOption=USER_ENTERED&key=${SHEETS_API_KEY}`;
+
+    await fetch(updateUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        range: `${SHEET_NAME}!J${sheetRow}:L${sheetRow}`,
+        majorDimension: 'ROWS',
+        values: [[
+          checkedIn ? 'TRUE' : 'FALSE',
+          checkedInAt || '',
+          checkedInBy || ''
+        ]]
+      })
+    });
+    console.log('Check-in written to Sheets, row', sheetRow);
+  } catch(e) {
+    console.warn('Could not write check-in to Sheets (non-critical):', e.message);
+  }
+}
+
+// ── PUSH ALL CHECKINS TO SHEETS ──────────────────────────
+async function pushAllCheckinsToSheets() {
+  const btn = document.getElementById('sheets-push-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Schreibt…'; }
+  setSheetsStatus('syncing', 'Schreibt…');
+  sheetsLog('Schreibe alle Check-ins ins Sheet…');
+
+  try {
+    // Get all checked-in guests from Supabase
+    const sbUrl = window.SUPABASE_URL || (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL);
+    const sbKey = window.SUPABASE_KEY || (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY);
+    const res = await fetch(`${sbUrl}/rest/v1/guests?checked_in=eq.true&select=id,checked_in_at,checked_in_by`, {
+      headers: { 'apikey': sbKey, 'Authorization': `Bearer ${sbKey}` }
+    });
+    const checkedIn = res.ok ? await res.json() : [];
+    sheetsLog(`${checkedIn.length} eingecheckte Gäste gefunden.`);
+
+    let count = 0;
+    for (const g of checkedIn) {
+      await writeCheckinToSheets(g.id, true, g.checked_in_at, g.checked_in_by);
+      count++;
+    }
+
+    sheetsLog(`✓ ${count} Check-ins ins Sheet geschrieben.`);
+    setSheetsStatus('ok', `${count} sync`);
+    if (typeof showToast === 'function') showToast(`✓ ${count} Check-ins ins Sheet geschrieben`, 'success');
+
+  } catch(e) {
+    sheetsLog(`✗ Fehler: ${e.message}`);
+    setSheetsStatus('error', 'Fehler');
+    console.error(e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↑ Alle Check-ins → Google Sheets schreiben'; }
+  }
+}
+
+// ── SHEET TAB SELECTOR ───────────────────────────────────
+function selectSheetTab(tabName, btn) {
+  SHEET_NAME = tabName;
+  document.querySelectorAll('#sheet-tab-pills .event-pill').forEach(b => {
+    b.classList.remove('active');
+    b.style.borderColor = '';
+    b.style.color = '';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+  }
+  sheetsLog(`Tab gewechselt zu: ${tabName}`);
+  if (typeof showToast === 'function') showToast(`Sheet-Tab: ${tabName}`, 'info');
+}
+
+// ── HELPER: get selected event for import ─────────────────
+function getSelectedEventIdForImport() {
+  // Try active event pill in import section
+  const pills = document.querySelectorAll('#event-pills-import .event-pill.active, #event-pills-import-local .event-pill.active');
+  if (pills.length > 0) return pills[0].dataset.id;
+  // Fall back to globally selected event
+  if (typeof currentEventId !== 'undefined' && currentEventId) return currentEventId;
+  // Try first available event
+  if (typeof events !== 'undefined' && events.length > 0) return events[0].id;
+  return null;
+}
+
+// ── AUTO-HOOK: intercept checkin confirmations ────────────
+// We patch the global confirmCheckin function to also write to Sheets
+document.addEventListener('DOMContentLoaded', () => {
+  // Wait for gdsf-app.js to load, then patch
+  setTimeout(() => {
+    if (typeof window.confirmCheckin === 'function') {
+      const originalConfirmCheckin = window.confirmCheckin.bind(window);
+      window.confirmCheckin = async function() {
+        // Call original
+        await originalConfirmCheckin();
+        // After check-in, write to Sheets
+        // Get the guest that was just checked in from the pending state
+        if (typeof pendingGuest !== 'undefined' && pendingGuest) {
+          const g = pendingGuest;
+          const now = new Date().toISOString();
+          const staffName = localStorage.getItem('entrance_name') || 'Doorstaff';
+          // Write async (non-blocking)
+          writeCheckinToSheets(g.id, true, now, staffName);
+        }
+      };
+    }
+
+    // Also patch the undo function
+    if (typeof window.undoCheckin === 'function') {
+      const originalUndo = window.undoCheckin.bind(window);
+      window.undoCheckin = async function(guestId) {
+        await originalUndo(guestId);
+        writeCheckinToSheets(guestId, false, null, null);
+      };
+    }
+  }, 1500);
+});
+</script>
+
 </body>
 </html>
