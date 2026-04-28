@@ -1189,6 +1189,16 @@ document.getElementById('ios-install-modal').addEventListener('click', function(
 
 // ── AUTO-LOGIN ───────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  // Logo → Home: touch + click für Mobile
+  const logo = document.getElementById('logo-home-btn');
+  if (logo) {
+    function goHome(e) {
+      e.preventDefault();
+      if (currentUser) switchTab('checkin');
+    }
+    logo.addEventListener('click', goHome);
+    logo.addEventListener('touchend', goHome, { passive: false });
+  }
   const saved = sessionStorage.getItem('gdsf_user');
   if (saved) { try { currentUser = JSON.parse(saved); showApp(); } catch(e) {} }
 });
@@ -1199,15 +1209,28 @@ const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').match
 let pwaInstallPrompt = null;
 
 function showPWAButtons(visible) {
-  // Header install button (legacy)
+  // Header install button — toggle visible class
   const hdr = document.getElementById('pwa-install-btn');
-  if (hdr) hdr.style.display = visible ? 'flex' : 'none';
+  if (hdr) {
+    if (visible) hdr.classList.add('visible');
+    else hdr.classList.remove('visible');
+  }
   // Login banner
   const ban = document.getElementById('login-pwa-banner');
   if (ban) ban.style.display = visible ? 'block' : 'none';
   // Footer install button
   const ftw = document.getElementById('footer-install-wrap');
   if (ftw) ftw.style.display = visible ? 'block' : 'none';
+}
+
+function toggleGuide() {
+  const content = document.getElementById('guide-content');
+  const arrow = document.getElementById('guide-arrow');
+  if (!content) return;
+  const open = content.style.display === 'flex';
+  content.style.display = open ? 'none' : 'flex';
+  content.style.flexDirection = 'column';
+  if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
 }
 
 if (isIOS && !isInStandaloneMode) { showPWAButtons(true); }
