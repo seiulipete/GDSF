@@ -1590,6 +1590,7 @@ function setSheetsStatus(status, msg) {
 }
 
 // ── READ FROM SHEETS → SUPABASE ───────────────────────────────
+// Matches guests by vorname+nachname (not ID). IDs are auto-generated.
 async function syncFromSheets() {
   if (!sheetsEventId) {
     sheetsLog('⚠ Kein Event verknüpft — bitte Tag auswählen.');
@@ -1602,7 +1603,11 @@ async function syncFromSheets() {
   setSheetsStatus('syncing', 'Lade Daten…');
   sheetsLog('Lade Gäste aus Tab "' + SHEET_NAME + '"…');
 
+  const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
+  const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
+
   try {
+    // 1. Fetch sheet rows
     const range = encodeURIComponent(SHEET_NAME + '!A:N');
     const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + range + '?key=' + SHEETS_API_KEY;
     const res = await fetch(url);
@@ -1616,53 +1621,65 @@ async function syncFromSheets() {
     }
 
     const headers = data.values[0].map(h => h.toString().toLowerCase().trim());
-    const rows = data.values.slice(1);
+    const rows = data.values.slice(1).filter(r => r && r.length > 0);
     sheetsLog(rows.length + ' Zeilen gefunden.');
 
-    const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
-    const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
-    if (!sbUrl) { sheetsLog('⚠ Supabase-Config fehlt!'); return; }
+    // 2. Load existing guests for this event from Supabase (match by name)
+    const existingRes = await fetch(
+      sbUrl + '/rest/v1/guests?event_id=eq.' + sheetsEventId + '&select=id,vorname,nachname',
+      { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
+    );
+    const existingGuests = existingRes.ok ? await existingRes.json() : [];
+
+    // Build lookup: "vorname|nachname" → id
+    const nameToId = {};
+    existingGuests.forEach(g => {
+      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
+      nameToId[key] = g.id;
+    });
 
     let added = 0, updated = 0, skipped = 0;
 
     for (const row of rows) {
-      if (!row || row.length === 0) continue;
       const obj = {};
       headers.forEach((h, i) => { obj[h] = (row[i] || '').toString().trim(); });
-      const id = obj['id'] || '';
-      if (!id) { skipped++; continue; }
+
+      // Require at least a nachname
+      const vorname = obj['vorname'] || '';
+      const nachname = obj['nachname'] || '';
+      if (!nachname) { skipped++; continue; }
+
+      const nameKey = (vorname + '|' + nachname).toLowerCase().trim();
+      const existingId = nameToId[nameKey];
 
       const guestData = {
-        id,
         event_id: sheetsEventId,
-        gl: obj['gl'] === 'TRUE' || obj['gl'] === 'true',
-        vip: obj['vip'] === 'TRUE' || obj['vip'] === 'true',
-        vorname: obj['vorname'] || '',
-        nachname: obj['nachname'] || '',
+        gl: obj['gl'] === 'TRUE' || obj['gl'] === 'true' || obj['gl'] === '1',
+        vip: obj['vip'] === 'TRUE' || obj['vip'] === 'true' || obj['vip'] === '1',
+        vorname,
+        nachname,
         firma: obj['firma'] || '',
         kategorie: obj['kategorie'] || '',
         notiz: obj['notiz'] || '',
       };
 
-      const checkRes = await fetch(sbUrl + '/rest/v1/guests?id=eq.' + encodeURIComponent(id) + '&select=id', {
-        headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey }
-      });
-      const existing = checkRes.ok ? await checkRes.json() : [];
-
-      if (existing.length === 0) {
+      if (existingId) {
+        // Update existing guest
+        await fetch(sbUrl + '/rest/v1/guests?id=eq.' + existingId, {
+          method: 'PATCH',
+          headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(guestData)
+        });
+        updated++;
+      } else {
+        // Insert new guest — Supabase auto-generates the UUID
         const r = await fetch(sbUrl + '/rest/v1/guests', {
           method: 'POST',
           headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify(guestData)
         });
         if (r.ok || r.status === 201) added++;
-      } else {
-        await fetch(sbUrl + '/rest/v1/guests?id=eq.' + encodeURIComponent(id), {
-          method: 'PATCH',
-          headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ vorname: guestData.vorname, nachname: guestData.nachname, firma: guestData.firma, kategorie: guestData.kategorie, notiz: guestData.notiz, gl: guestData.gl, vip: guestData.vip })
-        });
-        updated++;
+        else { const err = await r.text(); sheetsLog('✗ Fehler bei ' + nachname + ': ' + err); }
       }
     }
 
@@ -1706,7 +1723,7 @@ async function pushAllCheckinsToSheets() {
     const checkedIn = res.ok ? await res.json() : [];
     sheetsLog(checkedIn.length + ' eingecheckte Gäste gefunden.');
 
-    const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbwSbUbMRGIjQ_2OS6w4JJFvlcnNva55A7bImpKAlIHnq48NOQDRvG3mvheT-EPA0RQ/exec';
+    const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxZsbHawZ5OI4mOtYCqvbhmcb0VdZacKfJq7ruVDrFt9rhfIcZCvcIgU8HE6uTS2F34/exec';
     let count = 0;
     for (const g of checkedIn) {
       try {
