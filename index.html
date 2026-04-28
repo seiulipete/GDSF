@@ -1620,18 +1620,20 @@ async function syncFromSheets() {
       return;
     }
 
+    // Parse headers — works regardless of which columns exist
     const headers = data.values[0].map(h => h.toString().toLowerCase().trim());
-    const rows = data.values.slice(1).filter(r => r && r.length > 0);
-    sheetsLog(rows.length + ' Zeilen gefunden.');
+    const rows = data.values.slice(1).filter(r => r && r.some(c => c !== ''));
+    sheetsLog(rows.length + ' Zeilen gefunden (Tab: ' + SHEET_NAME + ')');
 
-    // 2. Load existing guests for this event from Supabase (match by name)
+    // 2. Load ALL existing guests for this event from Supabase
     const existingRes = await fetch(
       sbUrl + '/rest/v1/guests?event_id=eq.' + sheetsEventId + '&select=id,vorname,nachname',
       { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
     );
     const existingGuests = existingRes.ok ? await existingRes.json() : [];
+    sheetsLog(existingGuests.length + ' Gäste bereits in Supabase für dieses Event.');
 
-    // Build lookup: "vorname|nachname" → id
+    // Build lookup: "vorname|nachname" → id (for this event only)
     const nameToId = {};
     existingGuests.forEach(g => {
       const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
@@ -1641,10 +1643,11 @@ async function syncFromSheets() {
     let added = 0, updated = 0, skipped = 0;
 
     for (const row of rows) {
+      // Map row values to column names
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = (row[i] || '').toString().trim(); });
+      headers.forEach((h, i) => { obj[h] = (row[i] !== undefined ? row[i] : '').toString().trim(); });
 
-      // Require at least a nachname
+      // Need at least a nachname to create a guest
       const vorname = obj['vorname'] || '';
       const nachname = obj['nachname'] || '';
       if (!nachname) { skipped++; continue; }
@@ -1654,8 +1657,8 @@ async function syncFromSheets() {
 
       const guestData = {
         event_id: sheetsEventId,
-        gl: obj['gl'] === 'TRUE' || obj['gl'] === 'true' || obj['gl'] === '1',
-        vip: obj['vip'] === 'TRUE' || obj['vip'] === 'true' || obj['vip'] === '1',
+        gl: ['true','TRUE','1','ja','JA'].includes(obj['gl'] || ''),
+        vip: ['true','TRUE','1','ja','JA'].includes(obj['vip'] || ''),
         vorname,
         nachname,
         firma: obj['firma'] || '',
@@ -1664,22 +1667,26 @@ async function syncFromSheets() {
       };
 
       if (existingId) {
-        // Update existing guest
+        // Guest exists in this event → update name/details only (don't touch check-in)
         await fetch(sbUrl + '/rest/v1/guests?id=eq.' + existingId, {
           method: 'PATCH',
           headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify(guestData)
+          body: JSON.stringify({ vorname, nachname, firma: guestData.firma, kategorie: guestData.kategorie, notiz: guestData.notiz, gl: guestData.gl, vip: guestData.vip })
         });
         updated++;
       } else {
-        // Insert new guest — Supabase auto-generates the UUID
+        // New guest → Supabase generates UUID automatically
         const r = await fetch(sbUrl + '/rest/v1/guests', {
           method: 'POST',
           headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify(guestData)
         });
-        if (r.ok || r.status === 201) added++;
-        else { const err = await r.text(); sheetsLog('✗ Fehler bei ' + nachname + ': ' + err); }
+        if (r.ok || r.status === 201) {
+          added++;
+        } else {
+          const err = await r.text();
+          sheetsLog('✗ ' + nachname + ': ' + err.substring(0, 80));
+        }
       }
     }
 
