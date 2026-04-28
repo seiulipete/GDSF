@@ -118,6 +118,8 @@ function doLogout() {
   document.getElementById('view-dashboard').style.display = 'none';
   document.getElementById('view-admin').style.display = 'none';
   document.getElementById('view-admin').classList.remove('active');
+  const logoutFooter = document.getElementById('app-footer');
+  if (logoutFooter) logoutFooter.style.display = 'none';
 }
 
 // ── SHOW APP ─────────────────────────────────
@@ -129,6 +131,9 @@ async function showApp() {
   document.getElementById('view-admin').classList.remove('active');
   document.getElementById('view-dashboard').style.display = 'none';
   document.getElementById('view-checkin').style.display = 'flex';
+  // Show footer
+  const footer = document.getElementById('app-footer');
+  if (footer) footer.style.display = 'block';
   if (currentUser.is_admin) {
     document.getElementById('tab-admin-btn').style.display = '';
   } else {
@@ -1194,11 +1199,15 @@ const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').match
 let pwaInstallPrompt = null;
 
 function showPWAButtons(visible) {
-  const ids = ['pwa-install-btn', 'login-pwa-banner'];
-  ids.forEach(function(id) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = visible ? (id === 'pwa-install-btn' ? 'flex' : 'block') : 'none';
-  });
+  // Header install button (legacy)
+  const hdr = document.getElementById('pwa-install-btn');
+  if (hdr) hdr.style.display = visible ? 'flex' : 'none';
+  // Login banner
+  const ban = document.getElementById('login-pwa-banner');
+  if (ban) ban.style.display = visible ? 'block' : 'none';
+  // Footer install button
+  const ftw = document.getElementById('footer-install-wrap');
+  if (ftw) ftw.style.display = visible ? 'block' : 'none';
 }
 
 if (isIOS && !isInStandaloneMode) { showPWAButtons(true); }
