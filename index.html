@@ -1619,8 +1619,8 @@ async function syncFromSheets() {
     const rows = data.values.slice(1);
     sheetsLog(rows.length + ' Zeilen gefunden.');
 
-    const sbUrl = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : null;
-    const sbKey = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_KEY : null;
+    const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
+    const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
     if (!sbUrl) { sheetsLog('⚠ Supabase-Config fehlt!'); return; }
 
     let added = 0, updated = 0, skipped = 0;
@@ -1697,8 +1697,8 @@ async function pushAllCheckinsToSheets() {
   sheetsLog('Schreibe alle Check-ins ans Apps Script…');
 
   try {
-    const sbUrl = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : null;
-    const sbKey = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_KEY : null;
+    const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
+    const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
     const filterEvent = sheetsEventId ? '&event_id=eq.' + sheetsEventId : '';
     const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true' + filterEvent + '&select=id,checked_in_at,checked_in_by', {
       headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey }
