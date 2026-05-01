@@ -75,11 +75,204 @@ async function doLogin() {
       return;
     }
     currentUser = rows[0];
+
+    // ── MAGIC LINK: Erstlogin-Check ──────────
+    // Wenn must_register = true → Registrierungs-Modal zeigen
+    if (currentUser.must_register) {
+      showRegisterModal();
+      return;
+    }
+    // ─────────────────────────────────────────
+
     sessionStorage.setItem('gdsf_user', JSON.stringify(currentUser));
     showApp();
   } catch(e) {
     errEl.textContent = 'Verbindungsfehler: ' + e.message;
     errEl.style.display = 'block';
+  }
+}
+
+// ── MAGIC LINK: Registrierungs-Modal ─────────────────────────────────────────
+function showRegisterModal() {
+  // Modal dynamisch erstellen falls nicht vorhanden
+  let modal = document.getElementById('magic-register-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'magic-register-modal';
+    modal.className = 'modal-overlay show';
+    modal.innerHTML = `
+      <div class="modal-box" style="text-align:center;max-width:360px">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem">🔐</div>
+        <div class="modal-title" style="text-align:center">Persönlichen Zugang einrichten</div>
+        <p style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 1.25rem;line-height:1.5">
+          Willkommen <strong>${currentUser.name}</strong>!<br>
+          Bitte gib deine E-Mail-Adresse ein. Du erhältst einen Magic Link zum sicheren Einloggen.
+        </p>
+        <input type="email" id="register-email" placeholder="deine@email.de"
+          style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0.65rem 0.85rem;font-family:inherit;font-size:0.9rem;margin-bottom:0.75rem">
+        <div id="register-error" style="display:none;color:#f87171;font-size:0.82rem;margin-bottom:0.75rem"></div>
+        <button class="btn" onclick="sendMagicLinkRegistration()" style="width:100%">
+          ✉️ Magic Link senden
+        </button>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.75rem">
+          Du erhältst eine E-Mail mit einem Link. Beim nächsten Login verwendest du immer diesen Magic Link.
+        </p>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    modal.classList.add('show');
+    modal.querySelector('p strong') && (modal.querySelector('p strong').textContent = currentUser.name);
+  }
+}
+
+async function sendMagicLinkRegistration() {
+  const email = document.getElementById('register-email').value.trim().toLowerCase();
+  const errEl = document.getElementById('register-error');
+  errEl.style.display = 'none';
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Bitte eine gültige E-Mail-Adresse eingeben.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.querySelector('#magic-register-modal .btn');
+  btn.disabled = true;
+  btn.textContent = 'Wird gesendet…';
+  try {
+    // 1. E-Mail in accounts-Eintrag speichern + must_register auf false setzen
+    await patch(`entrances?id=eq.${currentUser.id}`, {
+      email: email,
+      must_register: false
+    });
+    // 2. Magic Link über Supabase Auth senden
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/magiclink`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: email,
+        data: { entrance_id: currentUser.id, entrance_name: currentUser.name }
+      })
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(t);
+    }
+    // Erfolg: Modal ersetzen durch Bestätigung
+    document.getElementById('magic-register-modal').innerHTML = `
+      <div class="modal-box" style="text-align:center;max-width:360px">
+        <div style="font-size:3rem;margin-bottom:0.75rem">✉️</div>
+        <div class="modal-title" style="text-align:center">E-Mail gesendet!</div>
+        <p style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 0;line-height:1.5">
+          Wir haben einen Magic Link an <strong>${email}</strong> gesendet.<br><br>
+          Bitte öffne dein E-Mail-Postfach und tippe auf den Link — du wirst dann automatisch eingeloggt.
+        </p>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:1rem">
+          Du kannst dieses Fenster schließen und die E-Mail öffnen.
+        </p>
+      </div>`;
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '✉️ Magic Link senden';
+    errEl.textContent = 'Fehler: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+// ── MAGIC LINK: Login per Link (Callback) ────────────────────────────────────
+// Wird aufgerufen wenn Supabase einen Magic Link in der URL hat
+async function handleMagicLinkCallback() {
+  const hash = window.location.hash;
+  if (!hash.includes('access_token')) return false;
+  try {
+    // Token aus URL parsen
+    const params = new URLSearchParams(hash.slice(1));
+    const accessToken = params.get('access_token');
+    if (!accessToken) return false;
+    // User-Daten aus JWT holen
+    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+    const email = payload.email;
+    // Entrance per E-Mail suchen
+    const rows = await get(`entrances?email=eq.${encodeURIComponent(email)}&is_active=eq.true&select=*`);
+    if (!rows || rows.length === 0) {
+      showToast('Kein Account für diese E-Mail gefunden.', 'error');
+      return false;
+    }
+    currentUser = rows[0];
+    sessionStorage.setItem('gdsf_user', JSON.stringify(currentUser));
+    // URL bereinigen (Token aus URL entfernen)
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    showApp();
+    return true;
+  } catch(e) {
+    console.error('Magic Link Callback Fehler:', e);
+    return false;
+  }
+}
+
+// ── MAGIC LINK: Login-Tab "Per E-Mail" ───────────────────────────────────────
+function showMagicLoginTab() {
+  let tab = document.getElementById('magic-login-section');
+  if (!tab) {
+    tab = document.createElement('div');
+    tab.id = 'magic-login-section';
+    tab.style.cssText = 'margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)';
+    tab.innerHTML = `
+      <p style="font-size:0.78rem;text-align:center;color:var(--muted);margin-bottom:0.75rem">
+        — oder per Magic Link —
+      </p>
+      <input type="email" id="magic-email-input" placeholder="Deine E-Mail-Adresse"
+        style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0.65rem 0.85rem;font-family:inherit;font-size:0.9rem;margin-bottom:0.65rem">
+      <div id="magic-login-msg" style="display:none;font-size:0.82rem;margin-bottom:0.65rem"></div>
+      <button class="btn secondary" onclick="sendMagicLoginLink()" style="width:100%;font-size:0.85rem">
+        📧 Magic Link anfordern
+      </button>`;
+    // Nach dem Login-Button einfügen
+    const loginBtn = document.querySelector('#login-screen .btn');
+    if (loginBtn && loginBtn.parentNode) {
+      loginBtn.parentNode.insertBefore(tab, loginBtn.nextSibling);
+    }
+  }
+}
+
+async function sendMagicLoginLink() {
+  const email = document.getElementById('magic-email-input').value.trim().toLowerCase();
+  const msgEl = document.getElementById('magic-login-msg');
+  msgEl.style.display = 'none';
+  if (!email || !email.includes('@')) {
+    msgEl.textContent = 'Bitte eine gültige E-Mail-Adresse eingeben.';
+    msgEl.style.color = '#f87171';
+    msgEl.style.display = 'block';
+    return;
+  }
+  // Prüfen ob E-Mail im System bekannt ist
+  const rows = await get(`entrances?email=eq.${encodeURIComponent(email)}&is_active=eq.true&select=id`);
+  if (!rows || rows.length === 0) {
+    msgEl.textContent = 'Diese E-Mail ist nicht registriert.';
+    msgEl.style.color = '#f87171';
+    msgEl.style.display = 'block';
+    return;
+  }
+  const btn = document.querySelector('#magic-login-section .btn');
+  btn.disabled = true;
+  btn.textContent = 'Wird gesendet…';
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/magiclink`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    msgEl.textContent = `✓ Magic Link gesendet an ${email} — bitte E-Mail prüfen.`;
+    msgEl.style.color = 'var(--green)';
+    msgEl.style.display = 'block';
+    btn.textContent = '✓ Gesendet';
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '📧 Magic Link anfordern';
+    msgEl.textContent = 'Fehler: ' + e.message;
+    msgEl.style.color = '#f87171';
+    msgEl.style.display = 'block';
   }
 }
 
@@ -798,7 +991,9 @@ async function loadAccounts() {
       nameDiv.textContent = r.name;
       const userDiv = document.createElement('div');
       userDiv.className = 'account-user';
-      userDiv.textContent = '@' + r.username + ' · ' + '•'.repeat(Math.min((r.password_hash || '').length, 8));
+      // E-Mail und Registrierungsstatus anzeigen
+      const emailInfo = r.email ? `📧 ${r.email}` : (r.must_register ? '⏳ Wartet auf Erstlogin' : '—');
+      userDiv.textContent = '@' + r.username + ' · ' + emailInfo;
       info.appendChild(nameDiv);
       info.appendChild(userDiv);
       row.appendChild(info);
@@ -858,7 +1053,12 @@ async function saveNewAccount() {
   const is_admin = document.getElementById('new-acc-role').value === 'true';
   if (!name || !username || !pass) { toast('Alle Felder erforderlich', 'error'); return; }
   try {
-    await post('entrances', { name, username, password_hash: pass, is_admin, is_active: true });
+    // must_register = true für Türpersonal (nicht für Admins)
+    // Türpersonal muss sich beim Erstlogin per Magic Link registrieren
+    await post('entrances', {
+      name, username, password_hash: pass, is_admin, is_active: true,
+      must_register: !is_admin  // Admins brauchen kein Magic Link
+    });
     closeAccountModal();
     document.getElementById('new-acc-name').value = '';
     document.getElementById('new-acc-user').value = '';
@@ -1188,7 +1388,7 @@ document.getElementById('event-modal').addEventListener('click', function(e) { i
 document.getElementById('ios-install-modal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
 
 // ── AUTO-LOGIN ───────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   // Logo → Home: touch + click für Mobile
   const logo = document.getElementById('logo-home-btn');
   if (logo) {
@@ -1199,8 +1399,17 @@ window.addEventListener('DOMContentLoaded', () => {
     logo.addEventListener('click', goHome);
     logo.addEventListener('touchend', goHome, { passive: false });
   }
+
+  // ── MAGIC LINK: Callback prüfen (URL-Hash mit access_token) ──
+  const magicHandled = await handleMagicLinkCallback();
+  if (magicHandled) return; // Magic Link hat übernommen
+
+  // ── Session wiederherstellen oder Login zeigen ────────────────
   const saved = sessionStorage.getItem('gdsf_user');
   if (saved) { try { currentUser = JSON.parse(saved); showApp(); } catch(e) {} }
+
+  // ── Magic Login Tab einblenden (immer sichtbar im Login-Screen) ──
+  showMagicLoginTab();
 });
 
 // ── PWA INSTALL (BUG FIX: kein ipwhois durch start_url) ─────────────────────
@@ -1218,9 +1427,12 @@ function showPWAButtons(visible) {
   // Login banner
   const ban = document.getElementById('login-pwa-banner');
   if (ban) ban.style.display = visible ? 'block' : 'none';
-  // Footer install button
+  // Footer install button (oben, immer sichtbar)
   const ftw = document.getElementById('footer-install-wrap');
   if (ftw) ftw.style.display = visible ? 'block' : 'none';
+  // Footer install link unter Kurzanleitung
+  const fgi = document.getElementById('footer-guide-install');
+  if (fgi) fgi.style.display = visible ? 'block' : 'none';
 }
 
 function toggleGuide() {
