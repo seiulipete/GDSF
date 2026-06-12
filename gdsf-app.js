@@ -14,6 +14,158 @@ let importEventId = null;
 let addGuestEventId = null;
 let realtimeChannel = null;
 
+// ════════════════════════════════════════════
+// BATCH 1: THEME (Dark/Light mit localStorage)
+// ════════════════════════════════════════════
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('gdsf_theme'); } catch(e) {}
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+})();
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const isLight = html.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    html.removeAttribute('data-theme');
+    try { localStorage.setItem('gdsf_theme', 'dark'); } catch(e) {}
+  } else {
+    html.setAttribute('data-theme', 'light');
+    try { localStorage.setItem('gdsf_theme', 'light'); } catch(e) {}
+  }
+  updateThemeToggleIcon();
+}
+
+function updateThemeToggleIcon() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  btn.textContent = isLight ? '☀️' : '🌙';
+  btn.title = isLight ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln';
+}
+
+// ════════════════════════════════════════════
+// BATCH 1: TON-FEEDBACK (Web Audio API)
+// success = normaler Check-in, vip = VIP-Gast,
+// already = Gast war schon eingecheckt
+// ════════════════════════════════════════════
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(type) {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const notes = {
+    success: [{f: 660, t: 0,    d: 0.12}, {f: 880, t: 0.13, d: 0.18}],
+    vip:     [{f: 660, t: 0,    d: 0.11}, {f: 830, t: 0.12, d: 0.11}, {f: 990, t: 0.24, d: 0.22}],
+    already: [{f: 220, t: 0,    d: 0.15}, {f: 196, t: 0.18, d: 0.22}]
+  }[type] || [];
+  notes.forEach(n => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type === 'already' ? 'square' : 'sine';
+    osc.frequency.value = n.f;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime + n.t);
+    gain.gain.exponentialRampToValueAtTime(type === 'already' ? 0.08 : 0.18, ctx.currentTime + n.t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n.t + n.d);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(ctx.currentTime + n.t);
+    osc.stop(ctx.currentTime + n.t + n.d + 0.05);
+  });
+}
+
+// ════════════════════════════════════════════
+// BATCH 1: LAST-CHECK-IN-BAR (mit Live-Zähler)
+// ════════════════════════════════════════════
+let lastCheckin = null; // { name, at (ms), entrance }
+let lastCheckinTimer = null;
+
+function setLastCheckin(name, entrance, atMs) {
+  lastCheckin = { name, entrance, at: atMs || Date.now() };
+  updateLastCheckinBar();
+  if (!lastCheckinTimer) lastCheckinTimer = setInterval(updateLastCheckinBar, 5000);
+}
+
+function updateLastCheckinBar() {
+  const bar = document.getElementById('last-checkin-bar');
+  if (!bar || !lastCheckin) return;
+  bar.classList.add('show');
+  document.getElementById('lc-name').textContent =
+    lastCheckin.name + (lastCheckin.entrance ? ' · ' + lastCheckin.entrance : '');
+  const sec = Math.max(0, Math.round((Date.now() - lastCheckin.at) / 1000));
+  let txt;
+  if (sec < 60) txt = `vor ${sec} s`;
+  else if (sec < 3600) txt = `vor ${Math.floor(sec / 60)} min`;
+  else txt = `vor ${Math.floor(sec / 3600)} h ${Math.floor((sec % 3600) / 60)} min`;
+  document.getElementById('lc-time').textContent = txt;
+}
+
+// ════════════════════════════════════════════
+// BATCH 1: FILTER "NOCH NICHT DA"
+// ════════════════════════════════════════════
+let pendingOnly = false;
+
+function togglePendingFilter() {
+  pendingOnly = !pendingOnly;
+  const btn = document.getElementById('filter-pending-btn');
+  if (btn) {
+    btn.classList.toggle('active', pendingOnly);
+    btn.textContent = pendingOnly ? '✓ Zeige nur "Noch nicht da"' : '⏳ Nur "Noch nicht da" anzeigen';
+  }
+  applySearch();
+}
+
+// ════════════════════════════════════════════
+// BATCH 1: A–Z SCHNELLNAVIGATION
+// ════════════════════════════════════════════
+function renderAZSidebar() {
+  const sidebar = document.getElementById('az-sidebar');
+  if (!sidebar) return;
+  const q = document.getElementById('search-input').value.trim();
+  // Sidebar nur zeigen wenn keine Suche aktiv & genug Gäste
+  if (q || filteredGuests.length < 15) {
+    sidebar.classList.add('hidden');
+    return;
+  }
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const available = new Set(
+    filteredGuests.map(g => ((g.nachname || g.vorname || '')[0] || '').toUpperCase())
+  );
+  sidebar.innerHTML = letters.map(l =>
+    `<button class="${available.has(l) ? 'available' : ''}" onclick="scrollToLetter('${l}')">${l}</button>`
+  ).join('');
+  sidebar.classList.remove('hidden');
+}
+
+function scrollToLetter(letter) {
+  const card = document.querySelector(`.guest-card[data-letter="${letter}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ════════════════════════════════════════════
+// WAKE LOCK – Display bleibt am Eingang an
+// ════════════════════════════════════════════
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+  } catch(e) { /* z.B. Energiesparmodus – kein Problem */ }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser) requestWakeLock();
+});
+
+
 // ── API HELPERS ──────────────────────────────
 async function api(method, path, body) {
   const headers = {
@@ -334,6 +486,8 @@ async function showApp() {
   }
   await loadEvents();
   setupRealtime();
+  requestWakeLock();
+  updateThemeToggleIcon();
 }
 
 // ── EVENTS ───────────────────────────────────
@@ -456,12 +610,17 @@ function applySearch() {
       return haystack.includes(q);
     });
   }
+  // BATCH 1: Filter "Noch nicht da"
+  if (pendingOnly) {
+    filteredGuests = filteredGuests.filter(g => !g.checked_in);
+  }
   filteredGuests.sort((a, b) => {
     if (a.checked_in !== b.checked_in) return a.checked_in ? 1 : -1;
     if (a.vip !== b.vip) return a.vip ? -1 : 1;
     return (a.nachname || '').localeCompare(b.nachname || '');
   });
   renderGuestList();
+  renderAZSidebar();
 }
 
 // ── RENDER GUESTS ────────────────────────────
@@ -474,9 +633,10 @@ function renderGuestList() {
   el.innerHTML = filteredGuests.map(g => {
     const initials = [(g.vorname||'').charAt(0), (g.nachname||'').charAt(0)].join('').toUpperCase();
     const fullName = [g.vorname, g.nachname].filter(Boolean).join(' ');
+    const letter = ((g.nachname || g.vorname || '')[0] || '').toUpperCase();
     const meta = [g.firma, g.kategorie].filter(Boolean).join(' · ');
     const checkedTime = g.checked_in_at ? new Date(g.checked_in_at).toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div class="guest-card ${g.checked_in?'checked':''} ${g.vip?'vip':''}">
+    return `<div class="guest-card ${g.checked_in?'checked':''} ${g.vip?'vip':''}" data-letter="${letter}">
       <div class="guest-avatar">
         ${initials}
         ${g.vip ? '<div class="vip-star">★</div>' : ''}
@@ -534,8 +694,9 @@ async function confirmCheckin() {
   }
   updateStats();
   applySearch();
-  showSuccessFlash(fullName);
+  showSuccessFlash(fullName, g.vip);
   addLiveFeedItem(g, currentUser.name);
+  setLastCheckin(fullName, currentUser.name);
   if (!isOnline) {
     offlineQueue.push({ guest_id: g.id, event_id: currentEventId, checked_in_at: now, entrance: currentUser.name });
     saveOfflineQueue();
@@ -544,9 +705,25 @@ async function confirmCheckin() {
     return;
   }
   try {
-    await patch(`guests?id=eq.${g.id}`, {
+    // RACE-CONDITION-FIX: Bedingtes Update – greift nur, wenn der Gast
+    // noch NICHT eingecheckt ist. Kommt ein leeres Array zurück, war ein
+    // anderer Eingang schneller.
+    const res = await patch(`guests?id=eq.${g.id}&checked_in=eq.false`, {
       checked_in: true, checked_in_at: now, checked_in_by: currentUser.name
     });
+    if (!res || res.length === 0) {
+      // Konflikt: Gast wurde bereits anderswo eingecheckt → echten Stand laden
+      try {
+        const rows = await get(`guests?id=eq.${g.id}&select=*`);
+        if (rows && rows[0] && idx !== -1) allGuests[idx] = rows[0];
+      } catch(e) {}
+      updateStats();
+      applySearch();
+      playTone('already');
+      const by = (idx !== -1 && allGuests[idx].checked_in_by) ? allGuests[idx].checked_in_by : 'einem anderen Eingang';
+      toast(`⚠ ${fullName} wurde bereits von ${by} eingecheckt`);
+      return;
+    }
     await post('checkin_log', {
       guest_id: g.id, event_id: currentEventId, entrance_name: currentUser.name, action: 'checkin'
     });
@@ -559,11 +736,12 @@ async function confirmCheckin() {
   }
 }
 
-function showSuccessFlash(name) {
+function showSuccessFlash(name, isVip) {
   const el = document.getElementById('success-flash');
   document.getElementById('success-name').textContent = name;
   el.classList.add('show');
-  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+  playTone(isVip ? 'vip' : 'success');
+  if (navigator.vibrate) navigator.vibrate(isVip ? [50, 30, 50, 30, 80] : [50, 30, 50]);
   setTimeout(() => el.classList.remove('show'), 1200);
 }
 
@@ -623,13 +801,17 @@ async function flushOfflineQueue() {
   const toSync = [...offlineQueue];
   for (const item of toSync) {
     try {
-      await patch(`guests?id=eq.${item.guest_id}`, {
+      // Bedingtes Update – falls der Gast inzwischen anderswo eingecheckt
+      // wurde, NICHT überschreiben und keinen Log-Eintrag doppeln.
+      const res = await patch(`guests?id=eq.${item.guest_id}&checked_in=eq.false`, {
         checked_in: true, checked_in_at: item.checked_in_at, checked_in_by: item.entrance
       });
-      await post('checkin_log', {
-        guest_id: item.guest_id, event_id: item.event_id,
-        entrance_name: item.entrance, action: 'checkin'
-      });
+      if (res && res.length > 0) {
+        await post('checkin_log', {
+          guest_id: item.guest_id, event_id: item.event_id,
+          entrance_name: item.entrance, action: 'checkin'
+        });
+      }
       offlineQueue = offlineQueue.filter(x => x.guest_id !== item.guest_id);
       saveOfflineQueue();
     } catch(e) { break; }
@@ -663,6 +845,10 @@ function setupRealtime() {
             allGuests[idx] = g;
             changed = true;
             addLiveFeedItem(g, g.checked_in_by || '–');
+            // Last-Check-in-Bar auch bei Check-ins anderer Eingänge updaten
+            const nm = [g.vorname, g.nachname].filter(Boolean).join(' ');
+            const atMs = g.checked_in_at ? new Date(g.checked_in_at).getTime() : Date.now();
+            if (!lastCheckin || atMs >= lastCheckin.at) setLastCheckin(nm, g.checked_in_by || '', atMs);
           } else if (idx !== -1) {
             allGuests[idx] = g;
           }
@@ -1464,4 +1650,16 @@ function triggerPWAInstall() {
     pwaInstallPrompt.prompt();
     pwaInstallPrompt.userChoice.then(() => { pwaInstallPrompt = null; showPWAButtons(false); });
   }
+}
+
+// ════════════════════════════════════════════
+// SERVICE WORKER – macht die App offline-fähig
+// und auf Android/Chrome installierbar
+// ════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(e =>
+      console.warn('[SW] Registrierung fehlgeschlagen:', e.message)
+    );
+  });
 }
