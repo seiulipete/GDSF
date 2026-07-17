@@ -1365,7 +1365,11 @@ async function saveNewGuest() {
   const btn = document.querySelector('[onclick="saveNewGuest()"]');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    await post('guests', guestsToSave.length === 1 ? guestsToSave[0] : guestsToSave);
+    const created = await post('guests', guestsToSave.length === 1 ? guestsToSave[0] : guestsToSave);
+    const createdArr = Array.isArray(created) ? created : [created];
+    if (typeof pushNewGuestsToSheets === 'function') {
+      pushNewGuestsToSheets(createdArr).catch(e => console.warn('[Sheets] Push neuer Gäste fehlgeschlagen (nicht blockierend):', e));
+    }
     ['ag-vorname','ag-nachname','ag-firma','ag-kategorie','ag-notiz'].forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('ag-vip').checked = false;
     document.getElementById('ag-gl').checked = true;

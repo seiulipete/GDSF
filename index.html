@@ -1870,7 +1870,41 @@ async function writeCheckinToSheets(guestId, checkedIn, checkedInAt, checkedInBy
   console.log('[Sheets] Webhook handles check-in sync for:', guestId);
 }
 
-// ── PUSH ALL CHECKINS MANUALLY ────────────────────────────────
+// ── PUSH NEW GUEST(S) TO SHEETS (manuell hinzugefügt, z.B. Begleitpersonen) ──
+async function pushNewGuestsToSheets(guests) {
+  if (!guests || !guests.length) return;
+  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxZsbHawZ5OI4mOtYCqvbhmcb0VdZacKfJq7ruVDrFt9rhfIcZCvcIgU8HE6uTS2F34/exec';
+  const tab = (typeof SHEET_NAME !== 'undefined' && SHEET_NAME) ? SHEET_NAME : SHEETS_DAYS[0].tab;
+  sheetsLog('Sende ' + guests.length + ' neue(n) Gast/Gäste an Sheet-Tab "' + tab + '"…');
+  try {
+    await fetch(appsScriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'addGuests',
+        tab: tab,
+        guests: guests.map(g => ({
+          id: g.id,
+          vorname: g.vorname || '',
+          nachname: g.nachname || '',
+          firma: g.firma || '',
+          kategorie: g.kategorie || '',
+          notiz: g.notiz || '',
+          vip: !!g.vip,
+          gl: !!g.gl
+        }))
+      })
+    });
+    // 'no-cors' verhindert das Auslesen der Antwort — wir gehen bei Erfolg des fetch selbst von "gesendet" aus.
+    sheetsLog('✓ An Apps Script gesendet (Tab: ' + tab + ').');
+  } catch(e) {
+    sheetsLog('✗ Fehler beim Senden neuer Gäste: ' + e.message);
+    throw e;
+  }
+}
+
+
 async function pushAllCheckinsToSheets() {
   const btn = document.getElementById('sheets-push-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Schreibt…'; }
