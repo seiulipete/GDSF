@@ -1433,6 +1433,14 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
             <input type="text" id="ag-notiz" placeholder="Optionale Notiz">
           </div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-top:0.6rem;background:var(--bg-alt,rgba(255,255,255,0.04));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;padding:0.5rem 0.75rem">
+          <div style="font-size:0.8rem;color:var(--muted)">👥 Begleitpersonen<br><span style="font-size:0.7rem;opacity:0.75">werden als "Name – Begleitperson N" angelegt</span></div>
+          <div style="display:flex;align-items:center;gap:0.6rem">
+            <button type="button" class="btn" onclick="agBegleitChange(-1)" style="width:36px;height:36px;padding:0;font-size:1.1rem;flex:none">−</button>
+            <span id="ag-begleit-count" style="min-width:1.5rem;text-align:center;font-weight:600;font-size:1rem">0</span>
+            <button type="button" class="btn" onclick="agBegleitChange(1)" style="width:36px;height:36px;padding:0;font-size:1.1rem;flex:none">+</button>
+          </div>
+        </div>
         <div style="display:flex;gap:0.75rem;margin-top:0.75rem;align-items:center">
           <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.8rem;color:var(--muted)">
             <input type="checkbox" id="ag-vip" style="width:16px;height:16px;accent-color:var(--accent)"> VIP

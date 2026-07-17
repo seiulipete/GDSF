@@ -1327,6 +1327,13 @@ async function confirmImport() {
 }
 
 // ── ADD GUEST ────────────────────────────────
+let agBegleitCount = 0;
+
+function agBegleitChange(delta) {
+  agBegleitCount = Math.max(0, Math.min(20, agBegleitCount + delta));
+  document.getElementById('ag-begleit-count').textContent = agBegleitCount;
+}
+
 async function saveNewGuest() {
   const errEl = document.getElementById('ag-error');
   errEl.style.display = 'none';
@@ -1334,10 +1341,9 @@ async function saveNewGuest() {
   if (!targetEventId) { errEl.textContent = 'Bitte zuerst ein Event auswählen.'; errEl.style.display = 'block'; return; }
   const nachname = document.getElementById('ag-nachname').value.trim();
   if (!nachname) { errEl.textContent = 'Nachname ist ein Pflichtfeld.'; errEl.style.display = 'block'; return; }
-  const guest = {
+  const vorname = document.getElementById('ag-vorname').value.trim() || null;
+  const baseFields = {
     event_id: targetEventId,
-    vorname: document.getElementById('ag-vorname').value.trim() || null,
-    nachname,
     firma: document.getElementById('ag-firma').value.trim() || null,
     kategorie: document.getElementById('ag-kategorie').value.trim() || null,
     notiz: document.getElementById('ag-notiz').value.trim() || null,
@@ -1345,15 +1351,30 @@ async function saveNewGuest() {
     gl: document.getElementById('ag-gl').checked,
     checked_in: false
   };
+  const hauptname = (vorname ? vorname + ' ' : '') + nachname;
+  const guestsToSave = [
+    { ...baseFields, vorname, nachname }
+  ];
+  for (let i = 1; i <= agBegleitCount; i++) {
+    guestsToSave.push({
+      ...baseFields,
+      vorname: null,
+      nachname: `${hauptname} - Begleitperson ${i}`
+    });
+  }
   const btn = document.querySelector('[onclick="saveNewGuest()"]');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    await post('guests', guest);
+    await post('guests', guestsToSave.length === 1 ? guestsToSave[0] : guestsToSave);
     ['ag-vorname','ag-nachname','ag-firma','ag-kategorie','ag-notiz'].forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('ag-vip').checked = false;
     document.getElementById('ag-gl').checked = true;
+    const companionCount = guestsToSave.length - 1;
+    agBegleitCount = 0;
+    document.getElementById('ag-begleit-count').textContent = '0';
     const ev = events.find(e => e.id === targetEventId);
-    toast(`✓ ${guest.vorname ? guest.vorname + ' ' : ''}${guest.nachname} hinzugefügt${ev ? ' (' + ev.name + ')' : ''}`, 'success');
+    const countSuffix = companionCount > 0 ? ` + ${companionCount} Begleitperson(en)` : '';
+    toast(`✓ ${hauptname}${countSuffix} hinzugefügt${ev ? ' (' + ev.name + ')' : ''}`, 'success');
     loadAdminStats();
     if (currentEventId === targetEventId) await loadGuests();
   } catch(e) {
