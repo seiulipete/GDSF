@@ -1873,7 +1873,7 @@ async function writeCheckinToSheets(guestId, checkedIn, checkedInAt, checkedInBy
 // ── PUSH NEW GUEST(S) TO SHEETS (manuell hinzugefügt, z.B. Begleitpersonen) ──
 async function pushNewGuestsToSheets(guests) {
   if (!guests || !guests.length) return;
-  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxZsbHawZ5OI4mOtYCqvbhmcb0VdZacKfJq7ruVDrFt9rhfIcZCvcIgU8HE6uTS2F34/exec';
+  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
   const tab = (typeof SHEET_NAME !== 'undefined' && SHEET_NAME) ? SHEET_NAME : SHEETS_DAYS[0].tab;
   sheetsLog('Sende ' + guests.length + ' neue(n) Gast/Gäste an Sheet-Tab "' + tab + '"…');
   try {
@@ -1915,13 +1915,15 @@ async function pushAllCheckinsToSheets() {
     const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
     const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
     const filterEvent = sheetsEventId ? '&event_id=eq.' + sheetsEventId : '';
-    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true' + filterEvent + '&select=id,checked_in_at,checked_in_by', {
+    // vorname/nachname mitladen — im Sheet gibt es keine ID-Spalte, das Matching läuft über den Namen
+    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true' + filterEvent + '&select=id,vorname,nachname,checked_in_at,checked_in_by', {
       headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey }
     });
     const checkedIn = res.ok ? await res.json() : [];
     sheetsLog(checkedIn.length + ' eingecheckte Gäste gefunden.');
 
-    const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbxZsbHawZ5OI4mOtYCqvbhmcb0VdZacKfJq7ruVDrFt9rhfIcZCvcIgU8HE6uTS2F34/exec';
+    const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
+    const tab = (typeof SHEET_NAME !== 'undefined' && SHEET_NAME) ? SHEET_NAME : SHEETS_DAYS[0].tab;
     let count = 0;
     for (const g of checkedIn) {
       try {
@@ -1929,7 +1931,11 @@ async function pushAllCheckinsToSheets() {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ record: { id: g.id, checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by } })
+          body: JSON.stringify({
+            action: 'checkin',
+            tab: tab,
+            record: { vorname: g.vorname, nachname: g.nachname, checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by }
+          })
         });
         count++;
       } catch(e) { /* no-cors hides errors, that's ok */ }
