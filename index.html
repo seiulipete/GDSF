@@ -1321,7 +1321,7 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
       </div>
       <div class="admin-section-body">
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem;line-height:1.5">
-          Wähle den Tag — Sheet-Tab und Event werden automatisch verknüpft. Check-ins werden via Webhook live ins Sheet geschrieben.
+          Eine gemeinsame Tabelle für beide Tage. Check-ins werden via Webhook live ins Sheet geschrieben.
         </div>
 
         <!-- Sheet Link -->
@@ -1334,23 +1334,9 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
           </div>
         </div>
 
-        <!-- COMBINED Day Selector — one button controls both sheet tab AND event -->
-        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.5rem">Tag auswählen:</div>
-        <div style="display:flex;gap:0.5rem;margin-bottom:1rem" id="sheets-day-pills">
-          <button onclick="selectSheetsDay(0)" id="sheets-day-0"
-            style="flex:1;padding:0.75rem;border-radius:10px;border:2px solid var(--accent);background:rgba(240,192,64,0.1);color:var(--accent);font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;transition:all 0.15s">
-            📅 28.08.26<br><span style="font-size:0.65rem;font-weight:400;opacity:0.7">Tab: 28.08.26</span>
-          </button>
-          <button onclick="selectSheetsDay(1)" id="sheets-day-1"
-            style="flex:1;padding:0.75rem;border-radius:10px;border:2px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;transition:all 0.15s">
-            📅 29.08.26<br><span style="font-size:0.65rem;font-weight:400;opacity:0.7">Tab: 29.08.26</span>
-          </button>
-        </div>
-
         <!-- Selected state display -->
         <div id="sheets-selection-display" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.85rem;margin-bottom:0.75rem;font-size:0.78rem;display:flex;gap:1rem">
-          <div><span style="color:var(--muted)">Sheet-Tab:</span> <strong id="sheets-current-tab" style="color:var(--accent)">28.08.26</strong></div>
-          <div><span style="color:var(--muted)">Event:</span> <strong id="sheets-current-event" style="color:var(--text)">wird geladen…</strong></div>
+          <div><span style="color:var(--muted)">Sheet-Tab:</span> <strong id="sheets-current-tab" style="color:var(--accent)">Gästeliste</strong></div>
         </div>
 
         <!-- Action Buttons -->
@@ -1623,97 +1609,16 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
 // ============================================================
 const SHEETS_API_KEY = 'AIzaSyA-YQ6yibbvwvKwzqEdKDfhcFqwkmcyCb8';
 const SHEET_ID = '1hBhtL9iBaxg8P62D1zGJm5beJSvccCy3USfWU9M3LK0';
+const SHEET_NAME = 'Gästeliste'; // einzige Ziel-Tabelle, ersetzt die frühere Tab-pro-Tag-Logik
+const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
 
-// Day → Sheet tab mapping
-const SHEETS_DAYS = [
-  { tab: '28.08.26', label: '28.08.26' },
-  { tab: '29.08.26', label: '29.08.26' }
-];
-let sheetsDayIndex = 0; // Currently selected day index
-let SHEET_NAME = SHEETS_DAYS[0].tab;
-let sheetsEventId = null; // Will be set once events load
-
-// ── DAY SELECTOR ─────────────────────────────────────────────
-function selectSheetsDay(idx) {
-  sheetsDayIndex = idx;
-  SHEET_NAME = SHEETS_DAYS[idx].tab;
-
-  // Update button styles
-  SHEETS_DAYS.forEach((_, i) => {
-    const btn = document.getElementById('sheets-day-' + i);
-    if (!btn) return;
-    if (i === idx) {
-      btn.style.borderColor = 'var(--accent)';
-      btn.style.background = 'rgba(240,192,64,0.1)';
-      btn.style.color = 'var(--accent)';
-    } else {
-      btn.style.borderColor = 'var(--border)';
-      btn.style.background = 'transparent';
-      btn.style.color = 'var(--muted)';
-    }
-  });
-
-  // Update display
-  const tabEl = document.getElementById('sheets-current-tab');
-  if (tabEl) tabEl.textContent = SHEET_NAME;
-
-  // Auto-select matching event by name/date
-  resolveSheetsDayToEvent(idx);
-  sheetsLog('Tag gewählt: ' + SHEETS_DAYS[idx].label + ' → Tab: ' + SHEET_NAME);
-}
-
-function resolveSheetsDayToEvent(idx) {
-  // Try to match event by name containing the date
-  const dayLabel = SHEETS_DAYS[idx].label; // e.g. "28.08.26"
-  const eventEl = document.getElementById('sheets-current-event');
-
-  // Get events from global state (loaded by gdsf-app.js)
-  const allEvents = (typeof events !== 'undefined') ? events : [];
-
-  if (allEvents.length === 0) {
-    // Events not loaded yet — try again shortly
-    setTimeout(() => resolveSheetsDayToEvent(idx), 800);
-    return;
-  }
-
-  // Try to match by date substring in event name
-  // Convert "28.08.26" → look for "28", "08", "2026", "28.08", etc.
-  const parts = dayLabel.split('.');
-  const day = parts[0];
-  const month = parts[1];
-  const yearShort = parts[2];
-
-  let matched = null;
-
-  // Priority 1: exact tab name in event name
-  matched = allEvents.find(e =>
-    e.name && (e.name.includes(dayLabel) || e.name.includes(day + '.' + month))
-  );
-
-  // Priority 2: match by index (first event = day 0, second = day 1)
-  if (!matched && allEvents.length > idx) {
-    matched = allEvents[idx];
-  }
-
-  // Priority 3: first event as fallback
-  if (!matched && allEvents.length > 0) {
-    matched = allEvents[0];
-  }
-
-  if (matched) {
-    sheetsEventId = matched.id;
-    if (eventEl) eventEl.textContent = matched.name || matched.id.substring(0, 8) + '…';
-    sheetsLog('Event verknüpft: ' + (matched.name || matched.id.substring(0, 8)));
-  } else {
-    sheetsEventId = null;
-    if (eventEl) eventEl.textContent = 'Kein Event gefunden';
-  }
-}
-
-// Init: resolve day 0 once events are available
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => selectSheetsDay(0), 1200);
-});
+// Supabase events.id → Label in Sheet-Spalte "event" (bei neuen Events hier ergänzen —
+// muss exakt mit EVENT_ID_TO_LABEL in Code.gs übereinstimmen)
+const EVENT_ID_TO_LABEL = {
+  '167ed638-3167-4306-a5d9-45be1c3f65e2': '28.08.26',
+  '3ee9a9d0-b39a-4992-b14a-2edcb058e31e': '29.08.26'
+};
+function eventLabelFor(eventId) { return EVENT_ID_TO_LABEL[eventId] || ''; }
 
 // ── LOG HELPER ────────────────────────────────────────────────
 function sheetsLog(msg) {
@@ -1749,12 +1654,6 @@ function setSheetsStatus(status, msg) {
 // ── READ FROM SHEETS → SUPABASE ───────────────────────────────
 // Matches guests by vorname+nachname (not ID). IDs are auto-generated.
 async function syncFromSheets() {
-  if (!sheetsEventId) {
-    sheetsLog('⚠ Kein Event verknüpft — bitte Tag auswählen.');
-    if (typeof showToast === 'function') showToast('Bitte erst einen Tag auswählen', 'error');
-    return;
-  }
-
   const btn = document.getElementById('sheets-sync-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Lädt…'; }
   setSheetsStatus('syncing', 'Lade Daten…');
@@ -1764,8 +1663,8 @@ async function syncFromSheets() {
   const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
 
   try {
-    // 1. Fetch sheet rows
-    const range = encodeURIComponent(SHEET_NAME + '!A:N');
+    // 1. Fetch sheet rows (single tab, includes column L "event")
+    const range = encodeURIComponent(SHEET_NAME + '!A:L');
     const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + range + '?key=' + SHEETS_API_KEY;
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + await res.text());
@@ -1780,22 +1679,26 @@ async function syncFromSheets() {
     // Parse headers — works regardless of which columns exist
     const headers = data.values[0].map(h => h.toString().toLowerCase().trim());
     const rows = data.values.slice(1).filter(r => r && r.some(c => c !== ''));
-    sheetsLog(rows.length + ' Zeilen gefunden (Tab: ' + SHEET_NAME + ')');
+    sheetsLog(rows.length + ' Zeilen gefunden.');
 
-    // 2. Load ALL existing guests for this event from Supabase
+    // 2. Load ALL existing guests (across both events) from Supabase
     const existingRes = await fetch(
-      sbUrl + '/rest/v1/guests?event_id=eq.' + sheetsEventId + '&select=id,vorname,nachname',
+      sbUrl + '/rest/v1/guests?select=id,vorname,nachname,event_id',
       { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
     );
     const existingGuests = existingRes.ok ? await existingRes.json() : [];
-    sheetsLog(existingGuests.length + ' Gäste bereits in Supabase für dieses Event.');
+    sheetsLog(existingGuests.length + ' Gäste bereits in Supabase.');
 
-    // Build lookup: "vorname|nachname" → id (for this event only)
+    // Build lookup: "vorname|nachname|event_id" → id
     const nameToId = {};
     existingGuests.forEach(g => {
-      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
+      const key = (g.vorname + '|' + g.nachname + '|' + g.event_id).toLowerCase().trim();
       nameToId[key] = g.id;
     });
+
+    // Umgekehrte Zuordnung: Event-Label (Sheet-Spalte) → Supabase event_id
+    const labelToEventId = {};
+    Object.keys(EVENT_ID_TO_LABEL).forEach(id => { labelToEventId[EVENT_ID_TO_LABEL[id]] = id; });
 
     let added = 0, updated = 0, skipped = 0;
 
@@ -1804,16 +1707,19 @@ async function syncFromSheets() {
       const obj = {};
       headers.forEach((h, i) => { obj[h] = (row[i] !== undefined ? row[i] : '').toString().trim(); });
 
-      // Need at least a nachname to create a guest
       const vorname = obj['vorname'] || '';
       const nachname = obj['nachname'] || '';
-      if (!nachname) { skipped++; continue; }
+      const eventLabel = obj['event'] || '';
+      const eventId = labelToEventId[eventLabel];
 
-      const nameKey = (vorname + '|' + nachname).toLowerCase().trim();
+      // Braucht mindestens Nachname + gültiges Event-Label zum Anlegen
+      if (!nachname || !eventId) { skipped++; continue; }
+
+      const nameKey = (vorname + '|' + nachname + '|' + eventId).toLowerCase().trim();
       const existingId = nameToId[nameKey];
 
       const guestData = {
-        event_id: sheetsEventId,
+        event_id: eventId,
         gl: ['true','TRUE','1','ja','JA'].includes(obj['gl'] || ''),
         vip: ['true','TRUE','1','ja','JA'].includes(obj['vip'] || ''),
         vorname,
@@ -1873,9 +1779,7 @@ async function writeCheckinToSheets(guestId, checkedIn, checkedInAt, checkedInBy
 // ── PUSH NEW GUEST(S) TO SHEETS (manuell hinzugefügt, z.B. Begleitpersonen) ──
 async function pushNewGuestsToSheets(guests) {
   if (!guests || !guests.length) return;
-  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
-  const tab = (typeof SHEET_NAME !== 'undefined' && SHEET_NAME) ? SHEET_NAME : SHEETS_DAYS[0].tab;
-  sheetsLog('Sende ' + guests.length + ' neue(n) Gast/Gäste an Sheet-Tab "' + tab + '"…');
+  sheetsLog('Sende ' + guests.length + ' neue(n) Gast/Gäste…');
   try {
     await fetch(appsScriptUrl, {
       method: 'POST',
@@ -1883,7 +1787,6 @@ async function pushNewGuestsToSheets(guests) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'addGuests',
-        tab: tab,
         guests: guests.map(g => ({
           id: g.id,
           vorname: g.vorname || '',
@@ -1892,12 +1795,13 @@ async function pushNewGuestsToSheets(guests) {
           kategorie: g.kategorie || '',
           notiz: g.notiz || '',
           vip: !!g.vip,
-          gl: !!g.gl
+          gl: !!g.gl,
+          event: eventLabelFor(g.event_id)
         }))
       })
     });
     // 'no-cors' verhindert das Auslesen der Antwort — wir gehen bei Erfolg des fetch selbst von "gesendet" aus.
-    sheetsLog('✓ An Apps Script gesendet (Tab: ' + tab + ').');
+    sheetsLog('✓ An Apps Script gesendet.');
   } catch(e) {
     sheetsLog('✗ Fehler beim Senden neuer Gäste: ' + e.message);
     throw e;
@@ -1914,16 +1818,13 @@ async function pushAllCheckinsToSheets() {
   try {
     const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
     const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
-    const filterEvent = sheetsEventId ? '&event_id=eq.' + sheetsEventId : '';
-    // vorname/nachname mitladen — im Sheet gibt es keine ID-Spalte, das Matching läuft über den Namen
-    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true' + filterEvent + '&select=id,vorname,nachname,checked_in_at,checked_in_by', {
+    // vorname/nachname mitladen — im Sheet gibt es keine ID-Spalte, das Matching läuft über Name+Event
+    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true&select=id,vorname,nachname,event_id,checked_in_at,checked_in_by', {
       headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey }
     });
     const checkedIn = res.ok ? await res.json() : [];
     sheetsLog(checkedIn.length + ' eingecheckte Gäste gefunden.');
 
-    const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
-    const tab = (typeof SHEET_NAME !== 'undefined' && SHEET_NAME) ? SHEET_NAME : SHEETS_DAYS[0].tab;
     let count = 0;
     for (const g of checkedIn) {
       try {
@@ -1933,8 +1834,7 @@ async function pushAllCheckinsToSheets() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'checkin',
-            tab: tab,
-            record: { vorname: g.vorname, nachname: g.nachname, checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by }
+            record: { vorname: g.vorname, nachname: g.nachname, event: eventLabelFor(g.event_id), checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by }
           })
         });
         count++;

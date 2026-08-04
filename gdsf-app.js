@@ -511,7 +511,8 @@ async function loadEvents() {
   });
   renderEventPills();
   if (events.length > 0) {
-    selectEvent(events[0].id);
+    const firstAvailable = events.find(e => !isPastEvent_(e)) || events[0];
+    selectEvent(firstAvailable.id);
   }
   if (currentUser.is_admin) {
     renderAdminEventPills();
@@ -521,11 +522,22 @@ async function loadEvents() {
   }
 }
 
+// Ein Event gilt als "vorbei", sobald der Kalendertag (event_date) verstrichen ist (ab 0:00 Uhr).
+function isPastEvent_(ev) {
+  if (!ev || !ev.event_date) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(ev.event_date + 'T00:00:00');
+  return d < today;
+}
+
 function renderEventPills() {
   const c = document.getElementById('event-pills-checkin');
-  c.innerHTML = events.map(e =>
-    `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectEvent('${e.id}')">${e.name}</div>`
-  ).join('');
+  c.innerHTML = events.map(e => {
+    if (isPastEvent_(e)) {
+      return `<div class="event-pill" style="opacity:0.4;cursor:not-allowed" title="Dieser Tag ist vorbei — Check-in nicht mehr möglich">${e.name} (vorbei)</div>`;
+    }
+    return `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectEvent('${e.id}')">${e.name}</div>`;
+  }).join('');
 }
 
 function renderAdminEventPills() {
@@ -558,9 +570,13 @@ function selectAdminEvent(id, fromPillsId) {
 }
 
 async function selectEvent(id) {
+  const ev = events.find(e => e.id === id);
+  if (ev && isPastEvent_(ev)) {
+    if (typeof toast === 'function') toast('Check-in für diesen Tag ist nicht mehr möglich.', 'error');
+    return;
+  }
   currentEventId = id;
   renderEventPills();
-  const ev = events.find(e => e.id === id);
   document.getElementById('header-event-name').textContent = ev ? ev.name : '–';
   await loadGuests();
 }
