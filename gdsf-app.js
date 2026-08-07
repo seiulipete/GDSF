@@ -1421,12 +1421,22 @@ async function exportCSV() {
 }
 
 async function resetCheckins() {
-  if (!currentEventId) return;
-  if (!confirm('Wirklich ALLE Check-ins für dieses Event zurücksetzen?')) return;
-  await patch(`guests?event_id=eq.${currentEventId}`, { checked_in: false, checked_in_at: null, checked_in_by: null });
-  toast('Check-ins zurückgesetzt');
-  await loadGuests();
-  loadAdminStats();
+  if (!confirm('Wirklich ALLE Check-ins zurücksetzen (komplette Gästeliste, beide Tage)?')) return;
+  try {
+    // Vorher merken, wer eingecheckt war, um den Reset auch ins Sheet zu schreiben
+    const previouslyChecked = allGuests.filter(g => g.checked_in);
+    await patch('guests?checked_in=eq.true', { checked_in: false, checked_in_at: null, checked_in_by: null });
+    toast('✓ ' + previouslyChecked.length + ' Check-ins zurückgesetzt');
+    await loadGuests();
+    loadAdminStats();
+    if (typeof pushCheckinToSheets === 'function') {
+      previouslyChecked.forEach(g => {
+        pushCheckinToSheets({ vorname: g.vorname, nachname: g.nachname }, '', '', false).catch(() => {});
+      });
+    }
+  } catch(e) {
+    toast('Fehler beim Zurücksetzen: ' + e.message, 'error');
+  }
 }
 
 // ── TAB SWITCHING ────────────────────────────

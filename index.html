@@ -1775,7 +1775,8 @@ function startSheetsAutoSync() {
 // ── PUSH SINGLE CHECK-IN TO SHEETS (direkt aus der App beim Check-in aufgerufen) ──
 // Ersetzt den früheren Supabase-Database-Webhook — die App ruft Code.gs selbst auf,
 // genau wie beim manuellen Push-Button, nur automatisch bei jedem Check-in.
-async function pushCheckinToSheets(guest, checkedInBy, checkedInAt) {
+async function pushCheckinToSheets(guest, checkedInBy, checkedInAt, checkedIn) {
+  const isCheckedIn = (checkedIn === undefined) ? true : !!checkedIn; // Standard: true (normaler Check-in-Aufruf)
   try {
     await fetch(appsScriptUrl, {
       method: 'POST',
@@ -1786,9 +1787,9 @@ async function pushCheckinToSheets(guest, checkedInBy, checkedInAt) {
         record: {
           vorname: guest.vorname || '',
           nachname: guest.nachname || '',
-          checked_in: true,
-          checked_in_at: checkedInAt,
-          checked_in_by: checkedInBy
+          checked_in: isCheckedIn,
+          checked_in_at: checkedInAt || '',
+          checked_in_by: checkedInBy || ''
         }
       })
     });
