@@ -447,6 +447,7 @@ function genMagicCode(inputId) {
 function doLogout() {
   if (!confirm('Wirklich abmelden?')) return;
   if (dashboardTimer) { clearInterval(dashboardTimer); dashboardTimer = null; }
+  if (typeof sheetsAutoSyncTimer !== 'undefined' && sheetsAutoSyncTimer) { clearInterval(sheetsAutoSyncTimer); sheetsAutoSyncTimer = null; }
   sessionStorage.removeItem('gdsf_user');
   localStorage.removeItem('gdsf_offline_queue');
   currentUser = null;
@@ -488,11 +489,15 @@ async function showApp() {
   setupRealtime();
   requestWakeLock();
   updateThemeToggleIcon();
+  if (typeof startSheetsAutoSync === 'function') startSheetsAutoSync();
 }
 
 // ── EVENTS ───────────────────────────────────
 // BUG FIX: sort_order Spalte könnte fehlen → query ohne sort_order,
 // Sortierung passiert nur im JS (mit null-check)
+// Events dienen nur noch der Tages-Statistik (Dashboard) und der internen
+// Zuordnung von Check-in-Log-Einträgen — die Gästeliste selbst ist global
+// und wird nicht mehr nach Event gefiltert.
 async function loadEvents() {
   let rawEvents = [];
   try {
@@ -509,11 +514,15 @@ async function loadEvents() {
     if (b.sort_order != null) return 1;
     return (a.event_date || '').localeCompare(b.event_date || '');
   });
-  renderEventPills();
-  if (events.length > 0) {
-    const firstAvailable = events.find(e => !isPastEvent_(e)) || events[0];
-    selectEvent(firstAvailable.id);
+  if (events.length > 0 && !currentEventId) {
+    // Nur intern zur Zuordnung von checkin_log-Einträgen — betrifft nicht,
+    // welche Gäste sichtbar/eincheckbar sind.
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const matching = events.find(e => e.event_date === today.toISOString().slice(0,10));
+    currentEventId = (matching || events[0]).id;
   }
+  document.getElementById('header-event-name').textContent = 'Gästeliste';
+  await loadGuests();
   if (currentUser.is_admin) {
     renderAdminEventPills();
     renderEventsList();
@@ -523,21 +532,12 @@ async function loadEvents() {
 }
 
 // Ein Event gilt als "vorbei", sobald der Kalendertag (event_date) verstrichen ist (ab 0:00 Uhr).
+// Wird noch für die Admin-Ansicht/Statistik verwendet, nicht mehr für den Check-in selbst.
 function isPastEvent_(ev) {
   if (!ev || !ev.event_date) return false;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const d = new Date(ev.event_date + 'T00:00:00');
   return d < today;
-}
-
-function renderEventPills() {
-  const c = document.getElementById('event-pills-checkin');
-  c.innerHTML = events.map(e => {
-    if (isPastEvent_(e)) {
-      return `<div class="event-pill" style="opacity:0.4;cursor:not-allowed" title="Dieser Tag ist vorbei — Check-in nicht mehr möglich">${e.name} (vorbei)</div>`;
-    }
-    return `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectEvent('${e.id}')">${e.name}</div>`;
-  }).join('');
 }
 
 function renderAdminEventPills() {
@@ -569,23 +569,11 @@ function selectAdminEvent(id, fromPillsId) {
   }
 }
 
-async function selectEvent(id) {
-  const ev = events.find(e => e.id === id);
-  if (ev && isPastEvent_(ev)) {
-    if (typeof toast === 'function') toast('Check-in für diesen Tag ist nicht mehr möglich.', 'error');
-    return;
-  }
-  currentEventId = id;
-  renderEventPills();
-  document.getElementById('header-event-name').textContent = ev ? ev.name : '–';
-  await loadGuests();
-}
-
 // ── GUESTS ───────────────────────────────────
+// Globale Gästeliste — gilt für beide Tage, kein Tages-Filter mehr.
 async function loadGuests() {
-  if (!currentEventId) return;
   try {
-    allGuests = await get(`guests?event_id=eq.${currentEventId}&order=nachname.asc&select=*`) || [];
+    allGuests = await get(`guests?order=nachname.asc&select=*`) || [];
     updateStats();
     applySearch();
   } catch(e) {
@@ -714,7 +702,7 @@ async function confirmCheckin() {
   addLiveFeedItem(g, currentUser.name);
   setLastCheckin(fullName, currentUser.name);
   if (!isOnline) {
-    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, checked_in_at: now, entrance: currentUser.name });
+    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, vorname: g.vorname, nachname: g.nachname, checked_in_at: now, entrance: currentUser.name });
     saveOfflineQueue();
     updateOfflineBadge();
     toast('📵 Offline gespeichert – wird synchronisiert sobald Verbindung besteht');
@@ -743,8 +731,11 @@ async function confirmCheckin() {
     await post('checkin_log', {
       guest_id: g.id, event_id: currentEventId, entrance_name: currentUser.name, action: 'checkin'
     });
+    if (typeof pushCheckinToSheets === 'function') {
+      pushCheckinToSheets(g, currentUser.name, now).catch(()=>{});
+    }
   } catch(e) {
-    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, checked_in_at: now, entrance: currentUser.name });
+    offlineQueue.push({ guest_id: g.id, event_id: currentEventId, vorname: g.vorname, nachname: g.nachname, checked_in_at: now, entrance: currentUser.name });
     saveOfflineQueue();
     setOnlineState(false);
     updateOfflineBadge();
@@ -827,6 +818,9 @@ async function flushOfflineQueue() {
           guest_id: item.guest_id, event_id: item.event_id,
           entrance_name: item.entrance, action: 'checkin'
         });
+        if (typeof pushCheckinToSheets === 'function') {
+          pushCheckinToSheets({ vorname: item.vorname, nachname: item.nachname, event_id: item.event_id }, item.entrance, item.checked_in_at).catch(()=>{});
+        }
       }
       offlineQueue = offlineQueue.filter(x => x.guest_id !== item.guest_id);
       saveOfflineQueue();
@@ -1494,19 +1488,34 @@ function selectDashboardEvent(id) {
   loadDashboardStats();
 }
 
+function localDateStr_(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 async function loadDashboardStats() {
-  const eid = dashboardEventId || currentEventId;
-  if (!eid) return;
+  const ev = events.find(e => e.id === dashboardEventId) || events[0];
+  const dayDate = ev ? ev.event_date : null; // 'YYYY-MM-DD', Tag für den diese Statistik gilt
   try {
-    const guests = await get(`guests?event_id=eq.${eid}&select=id,checked_in,vip,kategorie,checked_in_by,checked_in_at`) || [];
+    // Globale Gästeliste — gilt für beide Tage, kein event_id-Filter mehr.
+    const guests = await get(`guests?select=id,checked_in,vip,kategorie,checked_in_by,checked_in_at`) || [];
     const total = guests.length;
-    const checked = guests.filter(g => g.checked_in).length;
-    const vip = guests.filter(g => g.vip).length;
-    const pct = total > 0 ? Math.round(checked/total*100) : 0;
+    const totalCheckedEver = guests.filter(g => g.checked_in).length;
+    const pending = total - totalCheckedEver; // noch gar nicht eingecheckt, unabhängig vom Tag
+
+    const checkedThisDay = dayDate ? guests.filter(g => g.checked_in && localDateStr_(g.checked_in_at) === dayDate) : [];
+    const checked = checkedThisDay.length;
+    const vip = checkedThisDay.filter(g => g.vip).length;
+    const pct = total > 0 ? Math.round(checked / total * 100) : 0;
+
     document.getElementById('d-total').textContent = total;
     document.getElementById('d-checked').textContent = checked;
     document.getElementById('d-vip').textContent = vip;
-    document.getElementById('d-pending').textContent = total - checked;
+    document.getElementById('d-pending').textContent = pending;
     document.getElementById('d-pct').textContent = pct + '%';
     document.getElementById('d-progress').style.width = pct + '%';
     const circ = 2 * Math.PI * 35;
@@ -1514,7 +1523,7 @@ async function loadDashboardStats() {
     document.getElementById('d-donut-arc').setAttribute('stroke-dasharray', `${arc.toFixed(1)} ${circ.toFixed(1)}`);
     document.getElementById('d-donut-pct').textContent = pct + '%';
     const byEntrance = {};
-    guests.filter(g => g.checked_in && g.checked_in_by).forEach(g => {
+    checkedThisDay.filter(g => g.checked_in_by).forEach(g => {
       byEntrance[g.checked_in_by] = (byEntrance[g.checked_in_by] || 0) + 1;
     });
     const entranceEl = document.getElementById('d-entrance-chart');
@@ -1532,12 +1541,15 @@ async function loadDashboardStats() {
           </div></div>`;
       }).join('');
     }
+    // Kategorie-Übersicht: "total" bleibt global (ändert sich nicht pro Tag),
+    // "checked" bezieht sich nur auf die Check-ins dieses Tages.
+    const checkedIdsThisDay = new Set(checkedThisDay.map(g => g.id));
     const byCat = {};
     guests.forEach(g => {
       const cat = g.kategorie || 'Sonstige';
       if (!byCat[cat]) byCat[cat] = { total: 0, checked: 0 };
       byCat[cat].total++;
-      if (g.checked_in) byCat[cat].checked++;
+      if (checkedIdsThisDay.has(g.id)) byCat[cat].checked++;
     });
     document.getElementById('d-category-chart').innerHTML = Object.entries(byCat)
       .sort((a,b) => b[1].total - a[1].total).map(([cat, d]) => {
@@ -1549,7 +1561,7 @@ async function loadDashboardStats() {
             <div style="background:var(--green);height:5px;border-radius:4px;width:${p}%;transition:width 0.4s ease"></div>
           </div></div>`;
       }).join('');
-    renderDashboardTimeline(guests.filter(g => g.checked_in && g.checked_in_at));
+    renderDashboardTimeline(checkedThisDay);
   } catch(e) { console.error('loadDashboardStats:', e); }
 }
 

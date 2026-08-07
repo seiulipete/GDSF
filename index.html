@@ -1111,10 +1111,6 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
 
   <!-- CHECK-IN VIEW -->
   <div id="view-checkin">
-    <!-- Event selector -->
-    <div style="padding:0.5rem 0.75rem; background:var(--card); border-bottom:1px solid var(--border);">
-      <div class="event-pills" id="event-pills-checkin"></div>
-    </div>
     <!-- Search -->
     <div class="search-bar">
       <div class="search-wrap">
@@ -1609,16 +1605,8 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
 // ============================================================
 const SHEETS_API_KEY = 'AIzaSyA-YQ6yibbvwvKwzqEdKDfhcFqwkmcyCb8';
 const SHEET_ID = '1hBhtL9iBaxg8P62D1zGJm5beJSvccCy3USfWU9M3LK0';
-const SHEET_NAME = 'Gästeliste'; // einzige Ziel-Tabelle, ersetzt die frühere Tab-pro-Tag-Logik
+const SHEET_NAME = 'Gästeliste'; // einzige, globale Tabelle
 const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
-
-// Supabase events.id → Label in Sheet-Spalte "event" (bei neuen Events hier ergänzen —
-// muss exakt mit EVENT_ID_TO_LABEL in Code.gs übereinstimmen)
-const EVENT_ID_TO_LABEL = {
-  '167ed638-3167-4306-a5d9-45be1c3f65e2': '28.08.26',
-  '3ee9a9d0-b39a-4992-b14a-2edcb058e31e': '29.08.26'
-};
-function eventLabelFor(eventId) { return EVENT_ID_TO_LABEL[eventId] || ''; }
 
 // ── LOG HELPER ────────────────────────────────────────────────
 function sheetsLog(msg) {
@@ -1653,18 +1641,18 @@ function setSheetsStatus(status, msg) {
 
 // ── READ FROM SHEETS → SUPABASE ───────────────────────────────
 // Matches guests by vorname+nachname (not ID). IDs are auto-generated.
-async function syncFromSheets() {
+async function syncFromSheets(silent) {
   const btn = document.getElementById('sheets-sync-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Lädt…'; }
-  setSheetsStatus('syncing', 'Lade Daten…');
-  sheetsLog('Lade Gäste aus Tab "' + SHEET_NAME + '"…');
+  if (!silent && btn) { btn.disabled = true; btn.textContent = '⏳ Lädt…'; }
+  if (!silent) setSheetsStatus('syncing', 'Lade Daten…');
+  sheetsLog((silent ? '[Auto] ' : '') + 'Lade Gäste aus Tab "' + SHEET_NAME + '"…');
 
   const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
   const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
 
   try {
     // 1. Fetch sheet rows (single tab, includes column L "event")
-    const range = encodeURIComponent(SHEET_NAME + '!A:L');
+    const range = encodeURIComponent(SHEET_NAME + '!A:K');
     const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + range + '?key=' + SHEETS_API_KEY;
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + await res.text());
@@ -1681,24 +1669,24 @@ async function syncFromSheets() {
     const rows = data.values.slice(1).filter(r => r && r.some(c => c !== ''));
     sheetsLog(rows.length + ' Zeilen gefunden.');
 
-    // 2. Load ALL existing guests (across both events) from Supabase
+    // 2. Load ALL existing guests (globale Liste) from Supabase
     const existingRes = await fetch(
-      sbUrl + '/rest/v1/guests?select=id,vorname,nachname,event_id',
+      sbUrl + '/rest/v1/guests?select=id,vorname,nachname',
       { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
     );
     const existingGuests = existingRes.ok ? await existingRes.json() : [];
     sheetsLog(existingGuests.length + ' Gäste bereits in Supabase.');
 
-    // Build lookup: "vorname|nachname|event_id" → id
+    // Build lookup: "vorname|nachname" → id
     const nameToId = {};
     existingGuests.forEach(g => {
-      const key = (g.vorname + '|' + g.nachname + '|' + g.event_id).toLowerCase().trim();
+      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
       nameToId[key] = g.id;
     });
 
-    // Umgekehrte Zuordnung: Event-Label (Sheet-Spalte) → Supabase event_id
-    const labelToEventId = {};
-    Object.keys(EVENT_ID_TO_LABEL).forEach(id => { labelToEventId[EVENT_ID_TO_LABEL[id]] = id; });
+    // event_id ist in Supabase weiterhin ein Pflichtfeld je Gast, hat aber keine
+    // funktionale Bedeutung mehr (Liste ist global) — daher fixer Default-Wert.
+    const defaultEventId = (typeof events !== 'undefined' && events.length > 0) ? events[0].id : null;
 
     let added = 0, updated = 0, skipped = 0;
 
@@ -1709,17 +1697,13 @@ async function syncFromSheets() {
 
       const vorname = obj['vorname'] || '';
       const nachname = obj['nachname'] || '';
-      const eventLabel = obj['event'] || '';
-      const eventId = labelToEventId[eventLabel];
+      if (!nachname || !defaultEventId) { skipped++; continue; }
 
-      // Braucht mindestens Nachname + gültiges Event-Label zum Anlegen
-      if (!nachname || !eventId) { skipped++; continue; }
-
-      const nameKey = (vorname + '|' + nachname + '|' + eventId).toLowerCase().trim();
+      const nameKey = (vorname + '|' + nachname).toLowerCase().trim();
       const existingId = nameToId[nameKey];
 
       const guestData = {
-        event_id: eventId,
+        event_id: defaultEventId,
         gl: ['true','TRUE','1','ja','JA'].includes(obj['gl'] || ''),
         vip: ['true','TRUE','1','ja','JA'].includes(obj['vip'] || ''),
         vorname,
@@ -1730,7 +1714,7 @@ async function syncFromSheets() {
       };
 
       if (existingId) {
-        // Guest exists in this event → update name/details only (don't touch check-in)
+        // Gast existiert bereits → nur Details aktualisieren (Check-in-Status nicht anfassen)
         await fetch(sbUrl + '/rest/v1/guests?id=eq.' + existingId, {
           method: 'PATCH',
           headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
@@ -1753,17 +1737,63 @@ async function syncFromSheets() {
       }
     }
 
-    sheetsLog('✓ Fertig: ' + added + ' neu, ' + updated + ' aktualisiert, ' + skipped + ' übersprungen.');
-    setSheetsStatus('ok', '+' + added + ' / ↑' + updated);
-    if (typeof showToast === 'function') showToast('✓ ' + added + ' neu, ' + updated + ' aktualisiert', 'success');
+    sheetsLog((silent ? '[Auto] ' : '') + '✓ Fertig: ' + added + ' neu, ' + updated + ' aktualisiert, ' + skipped + ' übersprungen.');
+    if (!silent) setSheetsStatus('ok', '+' + added + ' / ↑' + updated);
+    if (!silent && typeof showToast === 'function') {
+      showToast('✓ ' + added + ' neu, ' + updated + ' aktualisiert', 'success');
+    } else if (silent && (added > 0 || updated > 0) && typeof showToast === 'function') {
+      // Im Hintergrund nur benachrichtigen, wenn sich wirklich etwas geändert hat
+      showToast('✓ Gästeliste aktualisiert: +' + added + ' neu', 'success');
+    }
     if (typeof loadGuests === 'function') setTimeout(loadGuests, 500);
 
   } catch(e) {
-    sheetsLog('✗ Fehler: ' + e.message);
-    setSheetsStatus('error', 'Fehler');
-    if (typeof showToast === 'function') showToast('Fehler: ' + e.message, 'error');
+    sheetsLog((silent ? '[Auto] ' : '') + '✗ Fehler: ' + e.message);
+    if (!silent) {
+      setSheetsStatus('error', 'Fehler');
+      if (typeof showToast === 'function') showToast('Fehler: ' + e.message, 'error');
+    } else {
+      console.warn('[Sheets Auto-Sync] Fehler (nicht blockierend):', e.message);
+    }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '↓ Gäste aus Sheet laden'; }
+    if (!silent && btn) { btn.disabled = false; btn.textContent = '↓ Gäste aus Sheet laden'; }
+  }
+}
+
+// ── AUTOMATISCHER HINTERGRUND-SYNC (alle paar Minuten) ──
+// Holt neue/geänderte Gäste aus dem Sheet, ohne dass jemand den Button drücken muss.
+let sheetsAutoSyncTimer = null;
+function startSheetsAutoSync() {
+  if (sheetsAutoSyncTimer) clearInterval(sheetsAutoSyncTimer);
+  sheetsAutoSyncTimer = setInterval(() => {
+    syncFromSheets(true).catch(() => {});
+  }, 3 * 60 * 1000); // alle 3 Minuten
+  // Einmal kurz nach dem Start auch direkt laufen lassen
+  setTimeout(() => syncFromSheets(true).catch(() => {}), 5000);
+}
+
+// ── PUSH SINGLE CHECK-IN TO SHEETS (direkt aus der App beim Check-in aufgerufen) ──
+// Ersetzt den früheren Supabase-Database-Webhook — die App ruft Code.gs selbst auf,
+// genau wie beim manuellen Push-Button, nur automatisch bei jedem Check-in.
+async function pushCheckinToSheets(guest, checkedInBy, checkedInAt) {
+  try {
+    await fetch(appsScriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'checkin',
+        record: {
+          vorname: guest.vorname || '',
+          nachname: guest.nachname || '',
+          checked_in: true,
+          checked_in_at: checkedInAt,
+          checked_in_by: checkedInBy
+        }
+      })
+    });
+  } catch(e) {
+    console.warn('[Sheets] Check-in-Push fehlgeschlagen (nicht blockierend):', e);
   }
 }
 
@@ -1795,8 +1825,7 @@ async function pushNewGuestsToSheets(guests) {
           kategorie: g.kategorie || '',
           notiz: g.notiz || '',
           vip: !!g.vip,
-          gl: !!g.gl,
-          event: eventLabelFor(g.event_id)
+          gl: !!g.gl
         }))
       })
     });
@@ -1819,7 +1848,7 @@ async function pushAllCheckinsToSheets() {
     const sbUrl = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? CONFIG.SUPABASE_URL : 'https://xdgufsqaplekmxuiubhu.supabase.co';
     const sbKey = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_KEY) ? CONFIG.SUPABASE_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
     // vorname/nachname mitladen — im Sheet gibt es keine ID-Spalte, das Matching läuft über Name+Event
-    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true&select=id,vorname,nachname,event_id,checked_in_at,checked_in_by', {
+    const res = await fetch(sbUrl + '/rest/v1/guests?checked_in=eq.true&select=id,vorname,nachname,checked_in_at,checked_in_by', {
       headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey }
     });
     const checkedIn = res.ok ? await res.json() : [];
@@ -1834,7 +1863,7 @@ async function pushAllCheckinsToSheets() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'checkin',
-            record: { vorname: g.vorname, nachname: g.nachname, event: eventLabelFor(g.event_id), checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by }
+            record: { vorname: g.vorname, nachname: g.nachname, checked_in: true, checked_in_at: g.checked_in_at, checked_in_by: g.checked_in_by }
           })
         });
         count++;
