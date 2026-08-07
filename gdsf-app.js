@@ -1498,7 +1498,13 @@ function localDateStr_(iso) {
 }
 
 async function loadDashboardStats() {
-  const ev = events.find(e => e.id === dashboardEventId) || events[0];
+  // events ist bereits chronologisch sortiert (loadEvents()). Das früheste Event
+  // (z.B. ein "Test"-Tab vor dem eigentlichen Festival) sammelt ALLE Check-ins
+  // bis einschließlich seinem Datum — spätere Tabs (28./29.) zählen nur exakt
+  // an diesem einen Kalendertag.
+  const idx = events.findIndex(e => e.id === dashboardEventId);
+  const ev = idx >= 0 ? events[idx] : events[0];
+  const isFirstEvent = idx <= 0;
   const dayDate = ev ? ev.event_date : null; // 'YYYY-MM-DD', Tag für den diese Statistik gilt
   try {
     // Globale Gästeliste — gilt für beide Tage, kein event_id-Filter mehr.
@@ -1507,13 +1513,19 @@ async function loadDashboardStats() {
     const totalCheckedEver = guests.filter(g => g.checked_in).length;
     const pending = total - totalCheckedEver; // noch gar nicht eingecheckt, unabhängig vom Tag
 
-    const checkedThisDay = dayDate ? guests.filter(g => g.checked_in && localDateStr_(g.checked_in_at) === dayDate) : [];
+    const checkedThisDay = dayDate ? guests.filter(g => {
+      if (!g.checked_in) return false;
+      const d = localDateStr_(g.checked_in_at);
+      if (!d) return false;
+      return isFirstEvent ? (d <= dayDate) : (d === dayDate);
+    }) : [];
     const checked = checkedThisDay.length;
+    const checkedNormal = checkedThisDay.filter(g => !g.vip).length; // "Eingecheckt"-Kachel: nur normale Gästeliste
     const vip = checkedThisDay.filter(g => g.vip).length;
     const pct = total > 0 ? Math.round(checked / total * 100) : 0;
 
     document.getElementById('d-total').textContent = total;
-    document.getElementById('d-checked').textContent = checked;
+    document.getElementById('d-checked').textContent = checkedNormal;
     document.getElementById('d-vip').textContent = vip;
     document.getElementById('d-pending').textContent = pending;
     document.getElementById('d-pct').textContent = pct + '%';
