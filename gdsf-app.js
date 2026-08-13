@@ -655,7 +655,8 @@ function renderGuestList() {
       </div>
       <div class="guest-right">
         ${g.checked_in
-          ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>`
+          ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>
+             ${currentUser && currentUser.is_admin ? `<button class="icon-btn" title="Check-in rückgängig machen" onclick="undoCheckin('${g.id}')" style="margin-left:0.4rem">↩</button>` : ''}`
           : `<button class="checkin-btn" onclick="openConfirm('${g.id}')">Check-In</button>`
         }
       </div>
@@ -668,6 +669,24 @@ function escHtml(s) {
 }
 
 // ── CHECKIN FLOW ─────────────────────────────
+// Admin-only: einzelnen Check-in rückgängig machen (z.B. bei Fehl-Check-in am Eingang)
+async function undoCheckin(guestId) {
+  if (!currentUser || !currentUser.is_admin) return;
+  const g = allGuests.find(x => x.id === guestId);
+  if (!g) return;
+  if (!confirm('Check-in von "' + [g.vorname, g.nachname].filter(Boolean).join(' ') + '" wirklich rückgängig machen?')) return;
+  try {
+    await patch('guests?id=eq.' + guestId, { checked_in: false, checked_in_at: null, checked_in_by: null });
+    toast('✓ Check-in rückgängig gemacht');
+    await loadGuests();
+    if (typeof pushCheckinToSheets === 'function') {
+      pushCheckinToSheets({ vorname: g.vorname, nachname: g.nachname }, '', '', false).catch(() => {});
+    }
+  } catch(e) {
+    toast('Fehler: ' + e.message, 'error');
+  }
+}
+
 function openConfirm(guestId) {
   const g = allGuests.find(x => x.id === guestId);
   if (!g || g.checked_in) return;
