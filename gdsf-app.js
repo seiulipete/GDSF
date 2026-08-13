@@ -639,7 +639,7 @@ function renderGuestList() {
     const fullName = [g.vorname, g.nachname].filter(Boolean).join(' ');
     const letter = ((g.nachname || g.vorname || '')[0] || '').toUpperCase();
     const meta = [g.firma, g.kategorie].filter(Boolean).join(' · ');
-    const checkedTime = g.checked_in_at ? new Date(g.checked_in_at).toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'}) : '';
+    const checkedTime = g.checked_in_at ? new Date(g.checked_in_at).toLocaleString('de-AT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
     return `<div class="guest-card ${g.checked_in?'checked':''} ${g.vip?'vip':''}" data-letter="${letter}">
       <div class="guest-avatar">
         ${initials}
@@ -1436,6 +1436,36 @@ async function exportCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = `GDSF_${(ev?.name||'Export').replace(/\s/g,'_')}.csv`;
   a.click();
+}
+
+// Setzt NUR die Check-ins zurück, die vor dem eigentlichen Festival-Start liegen
+// (also alles, was aktuell im "Test"-Tab im Dashboard gezählt wird). Echte
+// Check-ins vom 28./29. bleiben unangetastet.
+async function resetTestCheckins() {
+  const sorted = events.slice().sort((a,b) => (a.event_date||'').localeCompare(b.event_date||''));
+  if (sorted.length < 2) {
+    toast('Es gibt kein zweites (echtes) Event zum Vergleich — bitte "Alle Check-ins zurücksetzen" verwenden.', 'error');
+    return;
+  }
+  const cutoff = sorted[1].event_date; // Datum des ersten "echten" Festival-Tages
+  if (!confirm('Alle Check-ins VOR dem ' + sorted[1].name + ' zurücksetzen? (Test-Check-ins)')) return;
+  try {
+    const toReset = allGuests.filter(g => g.checked_in && g.checked_in_at && localDateStr_(g.checked_in_at) < cutoff);
+    if (toReset.length === 0) { toast('Keine Test-Check-ins gefunden.'); return; }
+    for (const g of toReset) {
+      await patch('guests?id=eq.' + g.id, { checked_in: false, checked_in_at: null, checked_in_by: null });
+    }
+    toast('✓ ' + toReset.length + ' Test-Check-ins zurückgesetzt');
+    await loadGuests();
+    loadAdminStats();
+    if (typeof pushCheckinToSheets === 'function') {
+      toReset.forEach(g => {
+        pushCheckinToSheets({ vorname: g.vorname, nachname: g.nachname }, '', '', false).catch(() => {});
+      });
+    }
+  } catch(e) {
+    toast('Fehler beim Zurücksetzen: ' + e.message, 'error');
+  }
 }
 
 async function resetCheckins() {
