@@ -1122,6 +1122,16 @@ function makeInput(idStr, valStr, phStr, accent) {
 
 async function loadAccounts() {
   const rows = await get('entrances?order=is_admin.desc,name.asc&select=*') || [];
+  // Check-ins pro Account zählen (gesamte Gästeliste, beide Tage) — für die Anzeige
+  // neben jedem Eingangs-Account.
+  const checkinCounts = {};
+  try {
+    const checkedGuests = await get('guests?checked_in=eq.true&select=checked_in_by') || [];
+    checkedGuests.forEach(g => {
+      if (!g.checked_in_by) return;
+      checkinCounts[g.checked_in_by] = (checkinCounts[g.checked_in_by] || 0) + 1;
+    });
+  } catch(e) { console.warn('Check-in-Zähler konnte nicht geladen werden:', e); }
   const el = document.getElementById('accounts-list');
   el.innerHTML = '';
   rows.forEach(function(r) {
@@ -1197,6 +1207,14 @@ async function loadAccounts() {
       badge.className = 'account-badge ' + (r.is_admin ? 'badge-admin' : 'badge-door');
       badge.textContent = r.is_admin ? 'Admin' : 'Tür';
       row.appendChild(badge);
+      if (!r.is_admin) {
+        const count = checkinCounts[r.name] || 0;
+        const countSpan = document.createElement('span');
+        countSpan.title = 'Check-ins durch diesen Account (gesamt, beide Tage)';
+        countSpan.style.cssText = 'font-size:0.75rem;color:var(--muted);white-space:nowrap;padding:0 0.25rem';
+        countSpan.textContent = '✓ ' + count;
+        row.appendChild(countSpan);
+      }
       const actions = document.createElement('div');
       actions.className = 'account-actions';
       const btnEdit = document.createElement('button');
