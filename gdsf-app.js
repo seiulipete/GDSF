@@ -576,6 +576,7 @@ async function loadGuests() {
     allGuests = await get(`guests?order=nachname.asc&select=*`) || [];
     updateStats();
     applySearch();
+    if (typeof renderAdminGuestList === 'function') renderAdminGuestList();
   } catch(e) {
     toast('Fehler beim Laden: ' + e.message, 'error');
   }
@@ -656,8 +657,10 @@ function renderGuestList() {
       <div class="guest-right">
         ${g.checked_in
           ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>
-             ${currentUser && currentUser.is_admin ? `<button class="icon-btn" title="Check-in rückgängig machen" onclick="undoCheckin('${g.id}')" style="margin-left:0.4rem">↩</button>` : ''}`
-          : `<button class="checkin-btn" onclick="openConfirm('${g.id}')">Check-In</button>`
+             ${currentUser && currentUser.is_admin ? `<button class="icon-btn" title="Check-in rückgängig machen" onclick="undoCheckin('${g.id}')" style="margin-left:0.4rem">↩</button>` : ''}
+             ${currentUser && currentUser.is_admin ? `<button class="icon-btn del" title="Gast löschen" onclick="deleteGuestAdmin('${g.id}')" style="margin-left:0.2rem">🗑</button>` : ''}`
+          : `<button class="checkin-btn" onclick="openConfirm('${g.id}')">Check-In</button>
+             ${currentUser && currentUser.is_admin ? `<button class="icon-btn del" title="Gast löschen" onclick="deleteGuestAdmin('${g.id}')" style="margin-left:0.4rem">🗑</button>` : ''}`
         }
       </div>
     </div>`;
@@ -1308,6 +1311,175 @@ async function deleteAccount(id, username) {
   loadAccounts();
 }
 
+// ── GÄSTELISTE VERWALTEN (Admin: bearbeiten / löschen) ──────
+let editingGuestId = null;
+
+function renderAdminGuestList() {
+  const el = document.getElementById('admin-guestlist');
+  if (!el) return; // Admin-Bereich noch nicht gerendert
+  const countEl = document.getElementById('adm-guest-count');
+  const searchInput = document.getElementById('adm-guest-search');
+  const q = (searchInput ? searchInput.value : '').toLowerCase().trim();
+
+  let list = allGuests || [];
+  if (q) {
+    list = list.filter(g => {
+      const haystack = [g.vorname, g.nachname, g.firma, g.kategorie].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+  list = [...list].sort((a, b) => (a.nachname || '').localeCompare(b.nachname || ''));
+
+  if (countEl) countEl.textContent = list.length + ' / ' + (allGuests || []).length;
+  el.innerHTML = '';
+
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--muted);font-size:0.8rem;padding:0.5rem 0.2rem';
+    empty.textContent = 'Keine Gäste gefunden.';
+    el.appendChild(empty);
+    return;
+  }
+
+  list.forEach(function(g) {
+    if (editingGuestId === g.id) {
+      const row = document.createElement('div');
+      row.className = 'account-row';
+      row.style.cssText = 'flex-direction:column;align-items:stretch;gap:0.5rem';
+
+      const row1 = document.createElement('div');
+      row1.style.cssText = 'display:flex;gap:0.5rem';
+      row1.appendChild(makeInput('gv-' + g.id, g.vorname || '', 'Vorname', false));
+      row1.appendChild(makeInput('gn-' + g.id, g.nachname || '', 'Nachname *', true));
+
+      const row2 = document.createElement('div');
+      row2.style.cssText = 'display:flex;gap:0.5rem';
+      row2.appendChild(makeInput('gf-' + g.id, g.firma || '', 'Firma / Organisation', false));
+      row2.appendChild(makeInput('gk-' + g.id, g.kategorie || '', 'Kategorie', false));
+
+      const row3 = document.createElement('div');
+      row3.style.cssText = 'display:flex;gap:0.5rem';
+      row3.appendChild(makeInput('gnt-' + g.id, g.notiz || '', 'Notiz', false));
+
+      const row4 = document.createElement('div');
+      row4.style.cssText = 'display:flex;align-items:center;gap:0.6rem';
+      const vipLabel = document.createElement('label');
+      vipLabel.style.cssText = 'display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:var(--muted)';
+      const vipCheck = document.createElement('input');
+      vipCheck.type = 'checkbox';
+      vipCheck.id = 'gvip-' + g.id;
+      vipCheck.checked = !!g.vip;
+      vipLabel.appendChild(vipCheck);
+      vipLabel.appendChild(document.createTextNode('VIP'));
+      row4.appendChild(vipLabel);
+
+      const btnSave = document.createElement('button');
+      btnSave.className = 'btn green';
+      btnSave.textContent = '✓ Speichern';
+      btnSave.style.cssText = 'flex:1;font-size:0.8rem;padding:0.4rem 0.75rem';
+      btnSave.addEventListener('click', function() { saveGuestEditAdmin(g.id); });
+
+      const btnCan = document.createElement('button');
+      btnCan.className = 'btn secondary';
+      btnCan.textContent = '✕';
+      btnCan.style.cssText = 'width:auto;font-size:0.8rem;padding:0.4rem 0.75rem';
+      btnCan.addEventListener('click', cancelGuestEdit);
+
+      row4.appendChild(btnSave);
+      row4.appendChild(btnCan);
+
+      row.appendChild(row1);
+      row.appendChild(row2);
+      row.appendChild(row3);
+      row.appendChild(row4);
+      el.appendChild(row);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'account-row';
+
+      const info = document.createElement('div');
+      info.className = 'account-info';
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'account-name';
+      nameDiv.textContent = (g.vip ? '★ ' : '') + [g.vorname, g.nachname].filter(Boolean).join(' ');
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'account-user';
+      metaDiv.textContent = [g.firma, g.kategorie].filter(Boolean).join(' · ') || '—';
+      info.appendChild(nameDiv);
+      info.appendChild(metaDiv);
+      row.appendChild(info);
+
+      if (g.checked_in) {
+        const badge = document.createElement('span');
+        badge.className = 'account-badge badge-admin';
+        badge.textContent = '✓ Eingecheckt';
+        badge.style.whiteSpace = 'nowrap';
+        row.appendChild(badge);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'account-actions';
+      const btnEdit = document.createElement('button');
+      btnEdit.className = 'icon-btn';
+      btnEdit.title = 'Bearbeiten';
+      btnEdit.textContent = '✏️';
+      btnEdit.addEventListener('click', function() { startGuestEdit(g.id); });
+      const btnDel = document.createElement('button');
+      btnDel.className = 'icon-btn del';
+      btnDel.title = 'Löschen';
+      btnDel.textContent = '🗑';
+      btnDel.addEventListener('click', function() { deleteGuestAdmin(g.id); });
+      actions.appendChild(btnEdit);
+      actions.appendChild(btnDel);
+      row.appendChild(actions);
+
+      el.appendChild(row);
+    }
+  });
+}
+
+function startGuestEdit(id) { editingGuestId = id; renderAdminGuestList(); }
+function cancelGuestEdit() { editingGuestId = null; renderAdminGuestList(); }
+
+async function saveGuestEditAdmin(id) {
+  const vorname = document.getElementById('gv-' + id).value.trim();
+  const nachname = document.getElementById('gn-' + id).value.trim();
+  const firma = document.getElementById('gf-' + id).value.trim();
+  const kategorie = document.getElementById('gk-' + id).value.trim();
+  const notiz = document.getElementById('gnt-' + id).value.trim();
+  const vip = document.getElementById('gvip-' + id).checked;
+
+  if (!nachname) { toast('Nachname ist Pflichtfeld', 'error'); return; }
+
+  try {
+    await patch(`guests?id=eq.${id}`, { vorname, nachname, firma, kategorie, notiz, vip });
+    toast('Gast gespeichert');
+    editingGuestId = null;
+    await loadGuests();
+    renderAdminGuestList();
+  } catch(e) {
+    toast('Fehler beim Speichern: ' + e.message, 'error');
+  }
+}
+
+async function deleteGuestAdmin(id) {
+  const g = (allGuests || []).find(x => x.id === id);
+  const name = g ? [g.vorname, g.nachname].filter(Boolean).join(' ') : 'diesen Gast';
+  let msg = `"${name}" endgültig aus der Gästeliste löschen?`;
+  if (g && g.checked_in) {
+    msg = `⚠️ "${name}" ist bereits eingecheckt!\n\n` + msg + '\n\nDer Check-in geht dabei verloren.';
+  }
+  if (!confirm(msg)) return;
+  try {
+    await del(`guests?id=eq.${id}`);
+    toast('Gast gelöscht');
+    await loadGuests();
+    renderAdminGuestList();
+  } catch(e) {
+    toast('Fehler beim Löschen: ' + e.message, 'error');
+  }
+}
+
 // ── IMPORT ───────────────────────────────────
 let importParsed = {};
 let importSheets = [];
@@ -1526,6 +1698,7 @@ function switchTab(tab) {
     loadAdminStats();
     loadAccounts();
     renderEventsList();
+    renderAdminGuestList();
     if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
     if (dashboardTimer) clearInterval(dashboardTimer);
     dashboardTimer = setInterval(() => {
