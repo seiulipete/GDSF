@@ -1465,13 +1465,16 @@ async function saveGuestEditAdmin(id) {
 async function deleteGuestAdmin(id) {
   const g = (allGuests || []).find(x => x.id === id);
   const name = g ? [g.vorname, g.nachname].filter(Boolean).join(' ') : 'diesen Gast';
-  let msg = `"${name}" endgültig aus der Gästeliste löschen?`;
+  let msg = `"${name}" endgültig aus der Gästeliste löschen? (wird auch im Google Sheet entfernt)`;
   if (g && g.checked_in) {
     msg = `⚠️ "${name}" ist bereits eingecheckt!\n\n` + msg + '\n\nDer Check-in geht dabei verloren.';
   }
   if (!confirm(msg)) return;
   try {
     await del(`guests?id=eq.${id}`);
+    if (g && typeof pushDeleteToSheets === 'function') {
+      pushDeleteToSheets(g).catch(() => {});
+    }
     toast('Gast gelöscht');
     await loadGuests();
     renderAdminGuestList();
@@ -1587,7 +1590,14 @@ async function saveNewGuest() {
     const created = await post('guests', guestsToSave.length === 1 ? guestsToSave[0] : guestsToSave);
     const createdArr = Array.isArray(created) ? created : [created];
     if (typeof pushNewGuestsToSheets === 'function') {
-      pushNewGuestsToSheets(createdArr).catch(e => console.warn('[Sheets] Push neuer Gäste fehlgeschlagen (nicht blockierend):', e));
+      // Bewusst awaiten (statt fire-and-forget): der automatische Sheet-Sync gleicht
+      // die Liste jetzt auch löschend ab — ein Gast, der noch nicht im Sheet angekommen
+      // ist, würde sonst vom nächsten Sync sofort wieder entfernt werden.
+      try {
+        await pushNewGuestsToSheets(createdArr);
+      } catch(e) {
+        console.warn('[Sheets] Push neuer Gäste fehlgeschlagen (nicht blockierend):', e);
+      }
     }
     ['ag-vorname','ag-nachname','ag-firma','ag-kategorie','ag-notiz'].forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('ag-vip').checked = false;

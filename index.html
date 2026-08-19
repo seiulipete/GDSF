@@ -1318,9 +1318,8 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
       <div class="admin-section-body">
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem;line-height:1.5">
           Eine gemeinsame Tabelle für beide Tage. Check-ins werden via Webhook live ins Sheet geschrieben.
-          Das Sheet ist die Stammliste: <strong>"Gäste aus Sheet laden"</strong> gleicht die App-Liste vollständig daran an —
-          neue Gäste werden ergänzt, geänderte aktualisiert und Gäste, die im Sheet nicht mehr stehen, werden aus der App entfernt (mit Sicherheitsabfrage).
-          Der automatische Hintergrund-Sync (alle 3 Min.) ergänzt nur neue Gäste und löscht nichts.
+          Das Sheet ist die Stammliste: Gäste, die du dort hinzufügst, änderst oder löschst, werden automatisch alle 3 Minuten in die App übernommen — inklusive Löschungen.
+          Löschst du stattdessen einen Gast direkt in der App, wird er ebenfalls automatisch aus dem Sheet entfernt.
         </div>
 
         <!-- Sheet Link -->
@@ -1388,8 +1387,8 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
         <input type="text" id="adm-guest-search" placeholder="🔍 Gast suchen…" oninput="renderAdminGuestList()"
           style="width:100%;box-sizing:border-box;margin-bottom:0.6rem;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:0.55rem 0.7rem;font-family:inherit;font-size:0.85rem">
         <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.6rem;line-height:1.5">
-          Änderungen hier gelten nur in der App. Damit sie dauerhaft bleiben, bitte auch im Sheet anpassen —
-          sonst kann ein späterer "Gäste aus Sheet laden"-Import sie wieder überschreiben bzw. den Gast neu anlegen.
+          Löschen wird automatisch auch im Google Sheet entfernt. Bearbeitungen (Name, Firma, Kategorie, Notiz, VIP)
+          gelten aktuell nur in der App — für dauerhafte Änderungen bitte zusätzlich im Sheet anpassen.
         </div>
         <div class="accounts-list" id="admin-guestlist" style="max-height:420px;overflow-y:auto"></div>
       </div>
@@ -1692,7 +1691,7 @@ async function syncFromSheets(silent) {
 
     // 2. Load ALL existing guests (globale Liste) from Supabase
     const existingRes = await fetch(
-      sbUrl + '/rest/v1/guests?select=id,vorname,nachname,checked_in',
+      sbUrl + '/rest/v1/guests?select=id,vorname,nachname,checked_in,created_at',
       { headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey } }
     );
     const existingGuests = existingRes.ok ? await existingRes.json() : [];
@@ -1762,44 +1761,77 @@ async function syncFromSheets(silent) {
       }
     }
 
-    // 3. VOLL-ABGLEICH (nur beim manuellen Laden, NICHT beim stillen Auto-Sync):
+    // 3. VOLL-ABGLEICH (immer, auch im stillen Auto-Sync alle 3 Min.):
     // Gäste, die in Supabase existieren, aber nicht (mehr) im Sheet stehen, werden entfernt.
-    // Das Sheet ist die Stammliste — der manuelle Button gleicht die App vollständig daran an.
+    // Das Sheet ist die Stammliste — sowohl der manuelle Klick als auch der automatische
+    // Hintergrund-Sync gleichen die App vollständig daran an.
+    // Beim manuellen Klick fragt eine Sicherheitsabfrage nach; im stillen Hintergrund-Sync
+    // läuft es ohne Rückfrage durch (kann nicht blockierend nach Bestätigung fragen),
+    // dafür informiert ein Toast danach über das, was automatisch entfernt wurde.
     let removed = 0;
-    if (!silent) {
-      const toDelete = existingGuests.filter(g => {
-        const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
-        return !sheetKeys.has(key);
-      });
+    // Schonfrist: Gäste, die erst vor Kurzem in der App angelegt wurden, NIE löschen,
+    // selbst wenn sie im Sheet (noch) nicht auftauchen — der Push zum Sheet läuft
+    // asynchron im Hintergrund und braucht manchmal ein paar Sekunden. Ohne diese
+    // Schonfrist würde ein frisch in der App hinzugefügter Gast vom nächsten
+    // automatischen Sync sofort wieder gelöscht werden, bevor er im Sheet ankommt.
+    const GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 Minuten
+    const now = Date.now();
 
-      if (toDelete.length > 0) {
-        const alreadyCheckedIn = toDelete.filter(g => g.checked_in).length;
+    const toDelete = existingGuests.filter(g => {
+      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
+      if (sheetKeys.has(key)) return false;
+      const createdAt = g.created_at ? new Date(g.created_at).getTime() : 0;
+      if (createdAt && (now - createdAt) < GRACE_PERIOD_MS) return false; // noch in der Schonfrist
+      return true;
+    });
+
+    const pending = existingGuests.filter(g => {
+      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
+      if (sheetKeys.has(key)) return false;
+      const createdAt = g.created_at ? new Date(g.created_at).getTime() : 0;
+      return createdAt && (now - createdAt) < GRACE_PERIOD_MS;
+    });
+    if (pending.length > 0) {
+      sheetsLog((silent ? '[Auto] ' : '') + '⏳ ' + pending.length + ' frisch angelegte(r) Gast/Gäste noch nicht im Sheet gefunden (Schonfrist aktiv, wird nicht gelöscht).');
+    }
+
+    if (toDelete.length > 0) {
+      const alreadyCheckedIn = toDelete.filter(g => g.checked_in).length;
+      let proceed = true;
+
+      if (!silent) {
         let warnMsg = toDelete.length + ' Gast/Gäste stehen in der App, aber nicht mehr im Sheet und würden jetzt aus der App gelöscht.';
         if (alreadyCheckedIn > 0) {
           warnMsg += '\n\n⚠️ Achtung: ' + alreadyCheckedIn + ' davon ' + (alreadyCheckedIn === 1 ? 'ist' : 'sind') + ' bereits eingecheckt — dieser Check-in geht dabei verloren!';
         }
         warnMsg += '\n\nWirklich löschen und Gästeliste exakt an das Sheet angleichen?';
+        proceed = confirm(warnMsg);
+      }
 
-        if (confirm(warnMsg)) {
-          sheetsLog('Lösche ' + toDelete.length + ' Gäste, die nicht mehr im Sheet stehen…');
-          // In Batches löschen (URL-Länge begrenzen)
-          const batchSize = 40;
-          for (let i = 0; i < toDelete.length; i += batchSize) {
-            const batch = toDelete.slice(i, i + batchSize).map(g => g.id);
-            const delRes = await fetch(
-              sbUrl + '/rest/v1/guests?id=in.(' + batch.join(',') + ')',
-              { method: 'DELETE', headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Prefer': 'return=minimal' } }
-            );
-            if (delRes.ok) {
-              removed += batch.length;
-            } else {
-              sheetsLog('✗ Fehler beim Löschen eines Batches: ' + (await delRes.text()).substring(0, 80));
-            }
+      if (proceed) {
+        sheetsLog((silent ? '[Auto] ' : '') + 'Lösche ' + toDelete.length + ' Gäste, die nicht mehr im Sheet stehen…');
+        // In Batches löschen (URL-Länge begrenzen)
+        const batchSize = 40;
+        for (let i = 0; i < toDelete.length; i += batchSize) {
+          const batch = toDelete.slice(i, i + batchSize).map(g => g.id);
+          const delRes = await fetch(
+            sbUrl + '/rest/v1/guests?id=in.(' + batch.join(',') + ')',
+            { method: 'DELETE', headers: { 'apikey': sbKey, 'Authorization': 'Bearer ' + sbKey, 'Prefer': 'return=minimal' } }
+          );
+          if (delRes.ok) {
+            removed += batch.length;
+          } else {
+            sheetsLog('✗ Fehler beim Löschen eines Batches: ' + (await delRes.text()).substring(0, 80));
           }
-          sheetsLog('✓ ' + removed + ' Gäste entfernt.');
-        } else {
-          sheetsLog('Löschen abgebrochen — Gästeliste NICHT vollständig angeglichen.');
         }
+        sheetsLog((silent ? '[Auto] ' : '') + '✓ ' + removed + ' Gäste entfernt.');
+        if (silent && removed > 0 && typeof showToast === 'function') {
+          let toastMsg = '🗑 ' + removed + ' Gast/Gäste automatisch entfernt (nicht mehr im Sheet)';
+          if (alreadyCheckedIn > 0) toastMsg += ' — davon ' + alreadyCheckedIn + ' bereits eingecheckt!';
+          showToast(toastMsg, alreadyCheckedIn > 0 ? 'error' : 'success');
+        }
+      } else {
+        sheetsLog('Löschen abgebrochen — Gästeliste NICHT vollständig angeglichen.');
       }
     }
 
@@ -1862,6 +1894,29 @@ async function pushCheckinToSheets(guest, checkedInBy, checkedInAt, checkedIn) {
     });
   } catch(e) {
     console.warn('[Sheets] Check-in-Push fehlgeschlagen (nicht blockierend):', e);
+  }
+}
+
+// ── PUSH SINGLE DELETE TO SHEETS (direkt aus der App beim Löschen aufgerufen) ──
+// Wird von deleteGuestAdmin() in gdsf-app.js aufgerufen, damit ein in der App
+// gelöschter Gast auch im Sheet (Stammliste) entfernt wird — sonst würde ihn
+// der nächste Auto-Sync wieder in die App zurückholen.
+async function pushDeleteToSheets(guest) {
+  try {
+    await fetch(appsScriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete',
+        record: {
+          vorname: guest.vorname || '',
+          nachname: guest.nachname || ''
+        }
+      })
+    });
+  } catch(e) {
+    console.warn('[Sheets] Löschen-Push fehlgeschlagen (nicht blockierend):', e);
   }
 }
 
