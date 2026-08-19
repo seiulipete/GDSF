@@ -1769,31 +1769,10 @@ async function syncFromSheets(silent) {
     // läuft es ohne Rückfrage durch (kann nicht blockierend nach Bestätigung fragen),
     // dafür informiert ein Toast danach über das, was automatisch entfernt wurde.
     let removed = 0;
-    // Schonfrist: Gäste, die erst vor Kurzem in der App angelegt wurden, NIE löschen,
-    // selbst wenn sie im Sheet (noch) nicht auftauchen — der Push zum Sheet läuft
-    // asynchron im Hintergrund und braucht manchmal ein paar Sekunden. Ohne diese
-    // Schonfrist würde ein frisch in der App hinzugefügter Gast vom nächsten
-    // automatischen Sync sofort wieder gelöscht werden, bevor er im Sheet ankommt.
-    const GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 Minuten
-    const now = Date.now();
-
     const toDelete = existingGuests.filter(g => {
       const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
-      if (sheetKeys.has(key)) return false;
-      const createdAt = g.created_at ? new Date(g.created_at).getTime() : 0;
-      if (createdAt && (now - createdAt) < GRACE_PERIOD_MS) return false; // noch in der Schonfrist
-      return true;
+      return !sheetKeys.has(key);
     });
-
-    const pending = existingGuests.filter(g => {
-      const key = (g.vorname + '|' + g.nachname).toLowerCase().trim();
-      if (sheetKeys.has(key)) return false;
-      const createdAt = g.created_at ? new Date(g.created_at).getTime() : 0;
-      return createdAt && (now - createdAt) < GRACE_PERIOD_MS;
-    });
-    if (pending.length > 0) {
-      sheetsLog((silent ? '[Auto] ' : '') + '⏳ ' + pending.length + ' frisch angelegte(r) Gast/Gäste noch nicht im Sheet gefunden (Schonfrist aktiv, wird nicht gelöscht).');
-    }
 
     if (toDelete.length > 0) {
       const alreadyCheckedIn = toDelete.filter(g => g.checked_in).length;
