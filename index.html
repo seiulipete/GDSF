@@ -758,55 +758,6 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
   .icon-btn:hover { color: var(--text); }
   .icon-btn.del:hover { color: var(--red); }
 
-  /* Import area */
-  .drop-zone {
-    border: 2px dashed var(--border);
-    border-radius: 10px;
-    padding: 2rem;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
-  }
-  .drop-zone:hover, .drop-zone.dragging {
-    border-color: var(--accent);
-    background: rgba(240,192,64,0.04);
-  }
-  .drop-zone input[type=file] {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-  }
-  .drop-icon { font-size: 2rem; margin-bottom: 0.5rem; }
-  .drop-text { font-size: 0.85rem; color: var(--muted); }
-  .drop-text strong { color: var(--text); }
-
-  /* Import preview */
-  .import-preview {
-    display: none;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-top: 0.75rem;
-  }
-  .import-preview.show { display: block; }
-  .import-sheet-tab {
-    display: inline-block;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    margin-right: 0.4rem;
-    margin-bottom: 0.5rem;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .import-sheet-tab.active { border-color: var(--accent); color: var(--accent); }
-  .import-info { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
-
   /* Event selector */
   .event-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
   .event-pill {
@@ -1354,29 +1305,6 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
       </div>
     </div>
 
-    <!-- Import -->
-    <div class="admin-section">
-      <div class="admin-section-header">
-        <div class="admin-section-title">📥 Excel Import (lokal)</div>
-      </div>
-      <div class="admin-section-body">
-        <div style="margin-bottom:0.75rem;font-size:0.8rem;color:var(--muted)">
-          Ziel-Event für Import:
-        </div>
-        <div class="event-pills" id="event-pills-import-local"></div>
-        <div class="drop-zone" id="drop-zone">
-          <input type="file" accept=".xlsx,.xls" onchange="handleFileImport(event)">
-          <div class="drop-icon">📂</div>
-          <div class="drop-text"><strong>Excel-Datei wählen</strong><br>oder hierher ziehen (.xlsx)</div>
-        </div>
-        <div class="import-preview" id="import-preview">
-          <div id="import-sheet-tabs"></div>
-          <div class="import-info" id="import-info"></div>
-          <button class="btn green" onclick="confirmImport()">✓ Importieren</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Gästeliste verwalten (Bearbeiten / Löschen) -->
     <div class="admin-section">
       <div class="admin-section-header">
@@ -1616,7 +1544,6 @@ try { if (localStorage.getItem('gdsf_theme') === 'light') document.documentEleme
 </div>
 
 <!-- ── SCRIPTS ──────────────────────────────────── -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="gdsf-config.js"></script>
 <script src="gdsf-app.js"></script>
 <script>

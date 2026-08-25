@@ -1,5 +1,5 @@
-// ── GDSF CHECK-IN: APP LOGIC v3.7 ────────────────────────────────────────────
-// Wird von gdsf-checkin.html eingebunden. Benötigt: gdsf-config.js + XLSX.js
+// ── GDSF CHECK-IN: APP LOGIC v3.8 ────────────────────────────────────────────
+// Wird von gdsf-checkin.html eingebunden. Benötigt: gdsf-config.js
 
 // ── STATE ────────────────────────────────────
 let currentUser = null;
@@ -8,9 +8,6 @@ let allGuests = [];
 let filteredGuests = [];
 let events = [];
 let pendingCheckin = null;
-let importData = null;
-let importSheetIndex = 0;
-let importEventId = null;
 let addGuestEventId = null;
 let realtimeChannel = null;
 
@@ -541,7 +538,7 @@ function isPastEvent_(ev) {
 }
 
 function renderAdminEventPills() {
-  const containers = ['event-pills-admin','event-pills-import','event-pills-addguest'];
+  const containers = ['event-pills-admin','event-pills-addguest'];
   containers.forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
@@ -549,7 +546,6 @@ function renderAdminEventPills() {
       `<div class="event-pill ${e.id===currentEventId?'active':''}" onclick="selectAdminEvent('${e.id}','${id}')">${e.name}</div>`
     ).join('');
   });
-  if (events.length > 0 && !importEventId) importEventId = events[0].id;
   if (events.length > 0 && !addGuestEventId) addGuestEventId = events[0].id;
 }
 
@@ -559,9 +555,7 @@ function selectAdminEvent(id, fromPillsId) {
   pills.forEach(p => {
     if (p.getAttribute('onclick') && p.getAttribute('onclick').includes("'" + id + "'")) p.classList.add('active');
   });
-  if (fromPillsId === 'event-pills-import') {
-    importEventId = id;
-  } else if (fromPillsId === 'event-pills-addguest') {
+  if (fromPillsId === 'event-pills-addguest') {
     addGuestEventId = id;
   } else {
     currentEventId = id;
@@ -1484,69 +1478,9 @@ async function deleteGuestAdmin(id) {
 }
 
 // ── IMPORT ───────────────────────────────────
-let importParsed = {};
-let importSheets = [];
+// (Excel-Bulk-Import entfernt — Gästeliste läuft jetzt zu 100% über den
+// Google-Sheet-Sync als Stammliste. Siehe Chat-Verlauf für Begründung.)
 
-function handleFileImport(evt) {
-  const file = evt.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-    importParsed = {};
-    importSheets = wb.SheetNames;
-    wb.SheetNames.forEach(name => {
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null });
-      importParsed[name] = rows;
-    });
-    importSheetIndex = 0;
-    renderImportPreview();
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function renderImportPreview() {
-  const preview = document.getElementById('import-preview');
-  const tabs = document.getElementById('import-sheet-tabs');
-  const info = document.getElementById('import-info');
-  preview.classList.add('show');
-  tabs.innerHTML = importSheets.map((name, i) =>
-    `<span class="import-sheet-tab ${i===importSheetIndex?'active':''}" onclick="selectImportSheet(${i})">${name}</span>`
-  ).join('');
-  const sheet = importSheets[importSheetIndex];
-  const rows = importParsed[sheet] || [];
-  info.textContent = `${rows.length} Gäste in Sheet "${sheet}"`;
-}
-
-function selectImportSheet(i) { importSheetIndex = i; renderImportPreview(); }
-
-async function confirmImport() {
-  if (!importEventId) { toast('Bitte zuerst ein Ziel-Event auswählen', 'error'); return; }
-  const sheet = importSheets[importSheetIndex];
-  const rows = importParsed[sheet] || [];
-  if (rows.length === 0) { toast('Keine Daten', 'error'); return; }
-  toast(`Importiere ${rows.length} Gäste…`);
-  const guests = rows.map(r => ({
-    event_id: importEventId,
-    gl: r['GL'] ? true : false,
-    vip: r['VIP'] ? true : false,
-    vorname: r['Vorname'] || null,
-    nachname: r['Nachname'] || '',
-    firma: r['Firma / Organisation / Beschreibung'] || null,
-    kategorie: r['Kategorie'] || null,
-    notiz: r['Notiz'] || null,
-    checked_in: false
-  }));
-  try {
-    for (let i = 0; i < guests.length; i += 100) {
-      await post('guests', guests.slice(i, i+100));
-    }
-    toast(`✓ ${guests.length} Gäste importiert!`, 'success');
-    document.getElementById('import-preview').classList.remove('show');
-    if (currentEventId === importEventId) await loadGuests();
-    loadAdminStats();
-  } catch(e) { toast('Import-Fehler: ' + e.message, 'error'); }
-}
 
 // ── ADD GUEST ────────────────────────────────
 let agBegleitCount = 0;
@@ -1880,17 +1814,6 @@ function toast(msg, type='') {
   c.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 }
-
-// ── DRAG & DROP ──────────────────────────────
-const dz = document.getElementById('drop-zone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
-dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('dragging');
-  const file = e.dataTransfer.files[0];
-  if (file) handleFileImport({target:{files:[file]}});
-});
 
 // ── CLOSE OVERLAYS ON BACKDROP ───────────────
 document.getElementById('confirm-overlay').addEventListener('click', function(e) { if (e.target === this) closeConfirm(); });
