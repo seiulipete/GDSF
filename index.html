@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v3.6</title>
+<title>GDSF · Guest Check-In v3.7</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1526,7 +1526,7 @@ async function loadGuests() {
 
 function updateStats() {
   const checked = allGuests.filter(g => g.checked_in).length;
-  const vip = allGuests.filter(g => g.vip).length;
+  const vip = allGuests.filter(g => g.vip === true || g.vip === 'true' || g.vip === 'TRUE').length;
   document.getElementById('stat-checked').textContent = checked;
   document.getElementById('stat-total').textContent = allGuests.length;
   document.getElementById('stat-vip').textContent = vip;
@@ -1579,14 +1579,14 @@ function renderGuestList() {
     const meta = [g.firma, g.kategorie].filter(Boolean).join(' · ');
     const checkedTime = g.checked_in_at ? new Date(g.checked_in_at).toLocaleTimeString('de-AT', {hour:'2-digit',minute:'2-digit'}) : '';
 
-    return `<div class="guest-card ${g.checked_in?'checked':''} ${g.vip?'vip':''}">
+    return `<div class="guest-card ${g.checked_in?'checked':''} ${(g.vip === true || g.vip === 'true' || g.vip === 'TRUE')?'vip':''}">
       <div class="guest-avatar">
         ${initials}
-        ${g.vip ? '<div class="vip-star">★</div>' : ''}
+        ${(g.vip === true || g.vip === 'true' || g.vip === 'TRUE') ? '<div class="vip-star">★</div>' : ''}
       </div>
       <div class="guest-info">
         <div class="guest-name">
-          ${g.vip ? '<span class="guest-badge">VIP</span>' : ''}
+          ${g.vip ? '<span class="guest-badge">VIP</span>' : (g.gl === true || g.gl === 'true' || g.gl === 'TRUE') ? '<span class="guest-badge" style="background:rgba(100,180,100,0.15);color:#7bc97e;border-color:rgba(100,180,100,0.4)">GL</span>' : ''}
           ${escHtml(fullName)}
         </div>
         <div class="guest-meta">${escHtml(meta)}</div>
