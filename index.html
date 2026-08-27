@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v3.7</title>
+<title>GDSF · Guest Check-In v3.8</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1404,6 +1404,35 @@ function genMagicCode(inputId) {
   try { document.execCommand('copy'); toast('Code kopiert: ' + code, 'success'); } catch(e) {}
 }
 
+async function undoCheckin(id) {
+  if (!confirm('Check-in rückgängig machen?')) return;
+  try {
+    await patch(`guests?id=eq.${id}`, { checked_in: false, checked_in_at: null, checked_in_by: null });
+    toast('Check-in rückgängig gemacht', 'success');
+    await loadGuests();
+  } catch(e) { toast('Fehler: ' + e.message, 'error'); }
+}
+
+async function deleteGuestCard(id) {
+  if (!confirm('Gast wirklich löschen?')) return;
+  try {
+    const g = allGuests.find(x => x.id === id);
+    await del(`guests?id=eq.${id}`);
+    if (g) {
+      // Also delete from sheet via Apps Script
+      try {
+        await fetch(appsScriptUrl, {
+          method: 'POST', mode: 'no-cors',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({action:'delete', record:{vorname: g.vorname, nachname: g.nachname}})
+        });
+      } catch(e) {}
+    }
+    toast('Gast gelöscht', 'success');
+    await loadGuests();
+  } catch(e) { toast('Fehler: ' + e.message, 'error'); }
+}
+
 function doLogout() {
   if (!confirm('Wirklich abmelden?')) return;
   // Clear timers first
@@ -1594,9 +1623,11 @@ function renderGuestList() {
       </div>
       <div class="guest-right">
         ${g.checked_in
-          ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>`
+          ? `<div class="checked-badge">✓ OK<div class="checked-time">${checkedTime}</div></div>
+             ${currentUser && currentUser.is_admin ? `<button class="icon-btn" onclick="undoCheckin('${g.id}')" title="Rückgängig" style="margin-left:0.3rem;opacity:0.6">↩</button>` : ''}`
           : `<button class="checkin-btn" onclick="openConfirm('${g.id}')">Check-In</button>`
         }
+        ${currentUser && currentUser.is_admin ? `<button class="icon-btn del" onclick="deleteGuestCard('${g.id}')" title="Löschen" style="opacity:0.5">🗑</button>` : ''}
       </div>
     </div>`;
   }).join('');
