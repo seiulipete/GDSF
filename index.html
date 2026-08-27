@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v4.0</title>
+<title>GDSF · Guest Check-In v4.1</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1545,7 +1545,7 @@ async function selectEvent(id) {
 async function loadGuests() {
   if (!currentEventId) return;
   try {
-    allGuests = await get(`guests?event_id=eq.${currentEventId}&order=nachname.asc&select=*`) || [];
+    allGuests = await get(`guests?event_id=eq.${currentEventId}&order=created_at.asc&select=*`) || [];
     updateStats();
     applySearch();
   } catch(e) {
@@ -2412,7 +2412,7 @@ async function saveNewGuest() {
 // ── EXPORT ───────────────────────────────────
 async function exportCSV() {
   if (!currentEventId) return;
-  const guests = await get(`guests?event_id=eq.${currentEventId}&order=nachname.asc&select=*`) || [];
+  const guests = await get(`guests?event_id=eq.${currentEventId}&order=created_at.asc&select=*`) || [];
   const ev = events.find(e => e.id === currentEventId);
   const headers = ['Vorname','Nachname','Firma','Kategorie','VIP','GL','Eingecheckt','Uhrzeit','Eingang','Notiz'];
   const rows = guests.map(g => [
