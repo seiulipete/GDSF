@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v4.1</title>
+<title>GDSF · Guest Check-In v4.2</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1147,7 +1147,7 @@
             <input type="text" id="ag-vorname" placeholder="Vorname">
           </div>
           <div class="form-group" style="margin:0">
-            <label>Nachname *</label>
+            <label>Nachname</label>
             <input type="text" id="ag-nachname" placeholder="Nachname">
           </div>
           <div class="form-group" style="margin:0">
@@ -1171,6 +1171,7 @@
             <input type="checkbox" id="ag-gl" checked style="width:16px;height:16px;accent-color:var(--accent)"> Gästeliste
           </label>
           <button class="btn" onclick="saveNewGuest()" style="flex:1;max-width:200px">👤 Gast speichern</button>
+          <button class="btn secondary" onclick="addBegleitperson()" title="Begleitperson des zuletzt gespeicherten Gastes hinzufügen" style="flex:1;max-width:200px">+👤 Begleitperson</button>
         </div>
         <div id="ag-error" style="display:none;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#ef4444;font-size:0.78rem;padding:0.5rem 0.75rem;margin-top:0.5rem"></div>
       </div>
@@ -1301,6 +1302,7 @@
 // ── CONFIG ──────────────────────────────────
 const SUPABASE_URL = 'https://xdgufsqaplekmxuiubhu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkZ3Vmc3FhcGxla214dWl1Ymh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTIzNjcsImV4cCI6MjA5MjQyODM2N30.SDA1FaWNT-jHPepYBtEYG62VqTvimvO8kmqUV24BNsI';
+const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbw0n3q3BpGv_E6klXRXR47k0PfmobX2AKnOCHaEV9vMKflYzmEAz6YG1ubusV2Rul1YEA/exec';
 
 // ── STATE ────────────────────────────────────
 let currentUser = null;
@@ -2361,6 +2363,29 @@ async function confirmImport() {
 }
 
 // ── ADD GUEST MANUALLY ───────────────────────
+let lastSavedGuest = null; // für Begleitperson-Funktion
+
+function addBegleitperson() {
+  if (!lastSavedGuest) {
+    toast('Zuerst einen Gast speichern', 'error');
+    return;
+  }
+  // Zähle bestehende Begleitpersonen
+  const existing = allGuests.filter(g =>
+    g.vorname === lastSavedGuest.vorname &&
+    g.nachname && g.nachname.startsWith('Begleitperson')
+  );
+  const num = existing.length + 1;
+  document.getElementById('ag-vorname').value = lastSavedGuest.vorname || '';
+  document.getElementById('ag-nachname').value = 'Begleitperson ' + num;
+  document.getElementById('ag-firma').value = lastSavedGuest.firma || '';
+  document.getElementById('ag-kategorie').value = lastSavedGuest.kategorie || '';
+  document.getElementById('ag-notiz').value = 'Begleitperson ' + num;
+  document.getElementById('ag-vip').checked = lastSavedGuest.vip || false;
+  document.getElementById('ag-gl').checked = lastSavedGuest.gl || false;
+  toast('Begleitpersonsdaten eingetragen – bitte speichern', 'success');
+}
+
 async function saveNewGuest() {
   const errEl = document.getElementById('ag-error');
   errEl.style.display = 'none';
@@ -2370,16 +2395,17 @@ async function saveNewGuest() {
     errEl.style.display = 'block';
     return;
   }
+  const vorname = document.getElementById('ag-vorname').value.trim();
   const nachname = document.getElementById('ag-nachname').value.trim();
-  if (!nachname) {
-    errEl.textContent = 'Nachname ist ein Pflichtfeld.';
+  if (!vorname && !nachname) {
+    errEl.textContent = 'Bitte mindestens Vorname oder Nachname eingeben.';
     errEl.style.display = 'block';
     return;
   }
   const guest = {
     event_id: targetEventId,
-    vorname: document.getElementById('ag-vorname').value.trim() || null,
-    nachname,
+    vorname: vorname || null,
+    nachname: nachname || null,
     firma: document.getElementById('ag-firma').value.trim() || null,
     kategorie: document.getElementById('ag-kategorie').value.trim() || null,
     notiz: document.getElementById('ag-notiz').value.trim() || null,
@@ -2390,7 +2416,26 @@ async function saveNewGuest() {
   const btn = document.querySelector('[onclick="saveNewGuest()"]');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
   try {
-    await post('guests', guest);
+    const savedGuest = await post('guests', guest);
+    // Auch ins Google Sheet schreiben
+    try {
+      await fetch(appsScriptUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          action: 'addGuests',
+          guests: [{
+            vorname: guest.vorname || '',
+            nachname: guest.nachname || '',
+            firma: guest.firma || '',
+            kategorie: guest.kategorie || '',
+            notiz: guest.notiz || '',
+            vip: guest.vip,
+            gl: guest.gl
+          }]
+        })
+      });
+    } catch(e) { console.warn('Sheet-Sync fehlgeschlagen:', e); }
     // Clear form
     ['ag-vorname','ag-nachname','ag-firma','ag-kategorie','ag-notiz'].forEach(id => {
       document.getElementById(id).value = '';
@@ -2398,7 +2443,8 @@ async function saveNewGuest() {
     document.getElementById('ag-vip').checked = false;
     document.getElementById('ag-gl').checked = true;
     const ev = events.find(e => e.id === targetEventId);
-    toast(`✓ ${guest.vorname ? guest.vorname + ' ' : ''}${guest.nachname} hinzugefügt${ev ? ' (' + ev.name + ')' : ''}`, 'success');
+    lastSavedGuest = { vorname: guest.vorname, firma: guest.firma, kategorie: guest.kategorie, vip: guest.vip, gl: guest.gl };
+    toast(`✓ ${[guest.vorname, guest.nachname].filter(Boolean).join(' ')} hinzugefügt${ev ? ' (' + ev.name + ')' : ''}`, 'success');
     loadAdminStats();
     if (currentEventId === targetEventId) await loadGuests();
   } catch(e) {
