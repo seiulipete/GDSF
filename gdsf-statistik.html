@@ -115,9 +115,9 @@
     <h1>🎸 Gegen die Stille Festival 2026</h1>
     <div class="subtitle">Festivalstatistik · Automatisch aus Supabase geladen</div>
   </div>
-  <div style="display:flex;gap:0.6rem">
-    <button class="export-btn" onclick="exportPDF()" style="background:#f87171;color:#fff">🖨️ PDF exportieren</button>
-    <button class="export-btn" onclick="exportExcel()">📊 Excel exportieren</button>
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:flex-end">
+    <button class="export-btn" onclick="exportPDF()" style="background:#f87171;color:#fff">🖨️ PDF</button>
+    <button class="export-btn" onclick="exportExcel()">📊 Excel</button>
   </div>
 </div>
 
@@ -127,6 +127,14 @@
 
     <!-- KPI -->
     <div class="kpi-grid" id="kpi-grid"></div>
+
+    <!-- Tages-Auswertung -->
+    <div class="section" id="days-section">
+      <div class="section-header">📅 Auswertung nach Tag</div>
+      <div class="section-body">
+        <div id="days-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem"></div>
+      </div>
+    </div>
 
     <!-- Timeline + Donut -->
     <div class="chart-grid-2">
@@ -222,6 +230,7 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'flex';
 
+  buildDays(rawGuests);
   buildKPIs(rawGuests);
   buildTimeline(rawGuests);
   buildEntranceChart(rawGuests);
@@ -231,6 +240,69 @@ async function init() {
   buildEntranceTable(rawGuests);
   buildInsights(rawGuests);
   buildGuestTable(rawGuests);
+}
+
+/* ── Tages-Auswertung ── */
+function buildDays(g) {
+  // Detect days from checked_in_at timestamps
+  const dayMap = {};
+  g.forEach(x => {
+    if (!x.checked_in_at) return;
+    const d = new Date(x.checked_in_at);
+    const key = d.toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
+    if (!dayMap[key]) dayMap[key] = [];
+    dayMap[key].push(x);
+  });
+  // Also count guests with no checkin_at but checked_in=true – put under "unbekannt"
+  const days = Object.keys(dayMap).sort();
+  if (days.length === 0) {
+    // Try splitting by event date or just show nothing
+    document.getElementById('days-section').style.display = 'none';
+    return;
+  }
+
+  // Total per day incl. not-shown (estimate: distribute not-shown proportionally or just show checked-in per day)
+  const grid = document.getElementById('days-grid');
+  grid.innerHTML = days.map((day, i) => {
+    const dayGuests = dayMap[day];
+    const din = dayGuests.length; // all have checked_in_at so all checked in
+    const vipIn = dayGuests.filter(x=>x.vip).length;
+    const glIn  = dayGuests.filter(x=>x.gl&&!x.vip).length;
+    const byHour = {};
+    dayGuests.forEach(x => {
+      const h = new Date(x.checked_in_at).getHours();
+      byHour[h] = (byHour[h]||0)+1;
+    });
+    const peakH = Object.entries(byHour).sort((a,b)=>b[1]-a[1])[0];
+    const byEnt = {};
+    dayGuests.filter(x=>x.checked_in_by).forEach(x => { byEnt[x.checked_in_by]=(byEnt[x.checked_in_by]||0)+1; });
+    const topE = Object.entries(byEnt).sort((a,b)=>b[1]-a[1])[0];
+    const colors = ['#f0c040','#60a5fa'];
+    return `<div class="chart-box" style="border-left:3px solid ${colors[i%2]}">
+      <h3 style="color:${colors[i%2]};font-size:0.8rem;letter-spacing:0.05em">📅 ${day}</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.75rem">
+        <div style="text-align:center">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--green)">${din}</div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase">Eingecheckt</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold)">${vipIn}</div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase">VIP</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--blue)">${glIn}</div>
+          <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase">Gästeliste</div>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);display:flex;flex-direction:column;gap:0.3rem">
+        ${peakH ? `<div>🔥 Spitzenstunde: <strong style="color:var(--text)">${peakH[0]}:00 Uhr</strong> (${peakH[1]} Check-ins)</div>` : ''}
+        ${topE  ? `<div>🚪 Stärkster Eingang: <strong style="color:var(--text)">${topE[0]}</strong> (${topE[1]})</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // If only 1 day detected, single column
+  if (days.length === 1) grid.style.gridTemplateColumns = '1fr';
 }
 
 /* ── KPIs ── */
