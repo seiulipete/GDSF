@@ -66,6 +66,38 @@
   .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
   .bar-row .count { min-width: 32px; text-align: right; font-weight: 600; }
 
+
+  /* ── PRINT / PDF styles ── */
+  @media print {
+    @page { size: A4; margin: 1.2cm 1.5cm; }
+    body { background: #fff !important; color: #111 !important; font-size: 10pt; }
+    .header { background: #fff !important; border-bottom: 2px solid #f0c040; padding: 0.6cm 0; color: #111 !important; }
+    .header h1 { color: #c8960a !important; font-size: 20pt; }
+    .header .subtitle { color: #666 !important; }
+    .export-btn, a button { display: none !important; }
+    .kpi-card { background: #f9f9f9 !important; border: 1px solid #ddd !important; break-inside: avoid; }
+    .kpi-card .kpi-num { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .section { background: #fff !important; border: 1px solid #ddd !important; break-inside: avoid; }
+    .section-header { background: #fdf3d0 !important; color: #8a6a00 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .chart-box { background: #f5f5f5 !important; border: 1px solid #eee !important; break-inside: avoid; }
+    .chart-box h3 { color: #555 !important; }
+    table { border-collapse: collapse; width: 100%; }
+    th { background: #f5f5f5 !important; color: #333 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #ddd; }
+    td { border: 1px solid #eee; color: #222 !important; }
+    .bar-track { background: #e5e5e5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .insight-row { border-bottom: 1px solid #eee !important; }
+    canvas { max-height: 180px !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .chart-grid-2, .chart-grid-3 { gap: 0.5rem; }
+    .loading { display: none !important; }
+    .kpi-pct { color: #555 !important; }
+    .badge-vip { background: #fef3c7 !important; color: #92400e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .badge-gl  { background: #dcfce7 !important; color: #166534 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .badge-miss{ background: #fee2e2 !important; color: #991b1b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .print-break { page-break-before: always; }
+    /* Hide full guest list in print – too long */
+    .section:last-child { display: none !important; }
+  }
+
   /* LOADING */
   .loading { text-align: center; color: var(--muted); padding: 3rem; font-size: 0.9rem; }
 
@@ -83,7 +115,10 @@
     <h1>🎸 Gegen die Stille Festival 2026</h1>
     <div class="subtitle">Festivalstatistik · Automatisch aus Supabase geladen</div>
   </div>
-  <button class="export-btn" onclick="exportExcel()">📊 Excel exportieren</button>
+  <div style="display:flex;gap:0.6rem">
+    <button class="export-btn" onclick="exportPDF()" style="background:#f87171;color:#fff">🖨️ PDF exportieren</button>
+    <button class="export-btn" onclick="exportExcel()">📊 Excel exportieren</button>
+  </div>
 </div>
 
 <div class="container">
@@ -480,54 +515,179 @@ function buildGuestTable(g) {
     </tr>`).join('')}</tbody>`;
 }
 
-/* ── Excel Export ── */
+/* ── PDF Export (Print Dialog) ── */
+function exportPDF() {
+  // Set document title for PDF filename
+  const origTitle = document.title;
+  document.title = 'GDSF_2026_Festivalstatistik';
+  // Small delay so charts render fully
+  setTimeout(() => {
+    window.print();
+    document.title = origTitle;
+  }, 300);
+}
+
+/* ── Excel Export (formatiert) ── */
+
 function exportExcel() {
   const wb = XLSX.utils.book_new();
+  const total = rawGuests.length;
+  const checked = rawGuests.filter(x=>x.checked_in).length;
+  const noshow = total - checked;
+  const vip = rawGuests.filter(x=>x.vip).length;
+  const vipIn = rawGuests.filter(x=>x.vip&&x.checked_in).length;
+  const gl = rawGuests.filter(x=>x.gl&&!x.vip).length;
+  const glIn = rawGuests.filter(x=>x.gl&&!x.vip&&x.checked_in).length;
 
-  // Sheet 1: Alle Gäste
-  const guestData = rawGuests.map(g => ({
-    'Vorname': g.vorname || '',
-    'Nachname': g.nachname || '',
-    'Firma': g.firma || '',
-    'Kategorie': g.kategorie || '',
-    'VIP': g.vip ? 'Ja' : 'Nein',
-    'Gästeliste': g.gl ? 'Ja' : 'Nein',
-    'Eingecheckt': g.checked_in ? 'Ja' : 'Nein',
-    'Uhrzeit': g.checked_in_at ? new Date(g.checked_in_at).toLocaleString('de-AT') : '',
-    'Eingang': g.checked_in_by || '',
-    'Notiz': g.notiz || ''
-  }));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(guestData), 'Gästeliste');
+  // Peak hour
+  const byHour = {};
+  rawGuests.filter(x=>x.checked_in_at).forEach(x=>{
+    const h = new Date(x.checked_in_at).getHours();
+    byHour[h]=(byHour[h]||0)+1;
+  });
+  const peakH = Object.entries(byHour).sort((a,b)=>b[1]-a[1])[0];
 
-  // Sheet 2: Eingangs-Statistik
+  // Entrances
   const byE = {};
   rawGuests.filter(x=>x.checked_in&&x.checked_in_by).forEach(x=>{
-    if(!byE[x.checked_in_by]) byE[x.checked_in_by]={count:0,vip:0,gl:0};
+    if(!byE[x.checked_in_by]) byE[x.checked_in_by]={count:0,vip:0,gl:0,first:null,last:null};
     byE[x.checked_in_by].count++;
     if(x.vip) byE[x.checked_in_by].vip++;
     if(x.gl&&!x.vip) byE[x.checked_in_by].gl++;
+    const t=new Date(x.checked_in_at);
+    if(!byE[x.checked_in_by].first||t<byE[x.checked_in_by].first) byE[x.checked_in_by].first=t;
+    if(!byE[x.checked_in_by].last||t>byE[x.checked_in_by].last) byE[x.checked_in_by].last=t;
   });
-  const eData = Object.entries(byE).map(([name,d])=>({
-    'Eingang': name, 'Check-ins gesamt': d.count, 'VIP': d.vip, 'Gästeliste': d.gl
-  }));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eData), 'Eingangs-Statistik');
 
-  // Sheet 3: Stündliche Auswertung
+  // Hours
   const byH = {};
   rawGuests.filter(x=>x.checked_in_at).forEach(x=>{
-    const h = new Date(x.checked_in_at).getHours()+':00';
+    const h=new Date(x.checked_in_at).getHours();
     byH[h]=(byH[h]||0)+1;
   });
-  const hData = Object.entries(byH).sort((a,b)=>parseInt(a)-parseInt(b)).map(([h,c])=>({'Stunde':h,'Check-ins':c}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hData), 'Stündlich');
 
-  // Sheet 4: Nicht Erschienen
-  const noshow = rawGuests.filter(x=>!x.checked_in).map(g=>({
-    'Vorname': g.vorname||'', 'Nachname': g.nachname||'',
-    'Firma': g.firma||'', 'Kategorie': g.kategorie||'',
-    'VIP': g.vip?'Ja':'Nein'
-  }));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(noshow), 'Nicht erschienen');
+  // Categories
+  const byCat={};
+  rawGuests.forEach(x=>{
+    const c=x.kategorie||'(keine)';
+    if(!byCat[c]) byCat[c]={total:0,in:0};
+    byCat[c].total++;
+    if(x.checked_in) byCat[c].in++;
+  });
+
+  const styleH = { font:{bold:true,color:{rgb:'FFFFFF'},sz:14}, fill:{fgColor:{rgb:'C8960A'}}, alignment:{horizontal:'center'} };
+  const styleSH = { font:{bold:true,color:{rgb:'8A6A00'},sz:11}, fill:{fgColor:{rgb:'FDF3D0'}}, alignment:{horizontal:'left'} };
+  const styleNum = { font:{bold:true,sz:16}, alignment:{horizontal:'center'} };
+  const styleLbl = { font:{color:{rgb:'666666'},sz:9}, alignment:{horizontal:'center'} };
+  const styleGreen = { font:{bold:true,color:{rgb:'166534'},sz:14}, fill:{fgColor:{rgb:'DCFCE7'}}, alignment:{horizontal:'center'} };
+  const styleRed   = { font:{bold:true,color:{rgb:'991B1B'},sz:14}, fill:{fgColor:{rgb:'FEE2E2'}}, alignment:{horizontal:'center'} };
+  const styleGold  = { font:{bold:true,color:{rgb:'92400E'},sz:14}, fill:{fgColor:{rgb:'FEF3C7'}}, alignment:{horizontal:'center'} };
+  const styleTH = { font:{bold:true,color:{rgb:'FFFFFF'},sz:10}, fill:{fgColor:{rgb:'444444'}}, border:{bottom:{style:'thin',color:{rgb:'888888'}}} };
+  const styleTD = { font:{sz:10}, border:{bottom:{style:'thin',color:{rgb:'EEEEEE'}}} };
+  const styleTDalt = { font:{sz:10}, fill:{fgColor:{rgb:'FAFAFA'}}, border:{bottom:{style:'thin',color:{rgb:'EEEEEE'}}} };
+
+  function setCell(ws, ref, v, s) {
+    ws[ref] = { v, t: typeof v==='number'?'n':'s', s };
+    if(!ws['!ref']) ws['!ref']='A1';
+  }
+  function aoa(ws, data, startRow, styleArr) {
+    data.forEach((row,ri) => {
+      row.forEach((val,ci) => {
+        const ref = XLSX.utils.encode_cell({r:startRow+ri, c:ci});
+        ws[ref] = { v: val===null||val===undefined?'':val, t: typeof val==='number'?'n':'s', s: styleArr?styleArr[ri%styleArr.length]:undefined };
+      });
+    });
+  }
+
+  // ── SHEET 1: ÜBERSICHT ──
+  const ws1 = {};
+  ws1['!ref'] = 'A1:H30';
+  ws1['!cols'] = [{wch:20},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16},{wch:16}];
+  ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}},{s:{r:3,c:0},e:{r:3,c:7}},{s:{r:10,c:0},e:{r:10,c:7}},{s:{r:17,c:0},e:{r:17,c:7}},{s:{r:24,c:0},e:{r:24,c:7}}];
+
+  setCell(ws1,'A1','🎸 GEGEN DIE STILLE FESTIVAL 2026 – FESTIVALSTATISTIK',styleH);
+  setCell(ws1,'A2',`Erstellt am ${new Date().toLocaleString('de-AT')}`,styleLbl);
+
+  setCell(ws1,'A4','📊 GESAMT-KENNZAHLEN',styleSH);
+  // KPI row headers
+  ['Gesamt','Eingecheckt','Nicht ersch.','Ausfallquote','VIP gesamt','VIP ersch.','GL gesamt','GL ersch.'].forEach((h,i)=>{
+    setCell(ws1, XLSX.utils.encode_cell({r:4,c:i}), h, styleTH);
+  });
+  // KPI values
+  const pct = total?Math.round(checked/total*100):0;
+  [total, checked, noshow, pct+'%', vip, vipIn, gl, glIn].forEach((v,i)=>{
+    const ref = XLSX.utils.encode_cell({r:5,c:i});
+    const s = i===1?styleGreen:i===2||i===3?styleRed:i===4||i===5?styleGold:styleNum;
+    ws1[ref] = { v: String(v), t:'s', s };
+  });
+
+  setCell(ws1,'A11','🚪 EINGANGS-AUSWERTUNG',styleSH);
+  ['Eingang','Check-ins','VIP','Gästeliste','Anteil %','Erster Check-in','Letzter Check-in'].forEach((h,i)=>{
+    setCell(ws1, XLSX.utils.encode_cell({r:11,c:i}), h, styleTH);
+  });
+  const eEntries = Object.entries(byE).sort((a,b)=>b[1].count-a[1].count);
+  eEntries.forEach(([name,d],ri)=>{
+    const s = ri%2===0?styleTD:styleTDalt;
+    const anteil = checked?Math.round(d.count/checked*100):0;
+    [name, d.count, d.vip, d.gl, anteil+'%',
+      d.first?d.first.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}):'–',
+      d.last?d.last.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}):'–'
+    ].forEach((v,ci)=>{
+      setCell(ws1, XLSX.utils.encode_cell({r:12+ri,c:ci}), v, s);
+    });
+  });
+
+  const catRow = 12 + eEntries.length + 2;
+  ws1['!merges'].push({s:{r:catRow-1,c:0},e:{r:catRow-1,c:7}});
+  setCell(ws1, XLSX.utils.encode_cell({r:catRow-1,c:0}), '🏷️ KATEGORIEN-AUSWERTUNG', styleSH);
+  ['Kategorie','Gesamt','Eingecheckt','Nicht ersch.','Erscheinungsrate'].forEach((h,i)=>{
+    setCell(ws1, XLSX.utils.encode_cell({r:catRow,c:i}), h, styleTH);
+  });
+  Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total).forEach(([cat,d],ri)=>{
+    const s = ri%2===0?styleTD:styleTDalt;
+    const er = d.total?Math.round(d.in/d.total*100):0;
+    [cat, d.total, d.in, d.total-d.in, er+'%'].forEach((v,ci)=>{
+      setCell(ws1, XLSX.utils.encode_cell({r:catRow+1+ri,c:ci}), v, s);
+    });
+  });
+
+  ws1['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:catRow+Object.keys(byCat).length+2,c:7}});
+  XLSX.utils.book_append_sheet(wb, ws1, '📊 Übersicht');
+
+  // ── SHEET 2: STÜNDLICH ──
+  const ws2 = {};
+  ws2['!cols'] = [{wch:12},{wch:14},{wch:14}];
+  setCell(ws2,'A1','Stunde', styleTH);
+  setCell(ws2,'B1','Check-ins', styleTH);
+  setCell(ws2,'C1','Kumulativ', styleTH);
+  const hSorted = Object.entries(byH).sort((a,b)=>parseInt(a)-parseInt(b));
+  let kum=0;
+  hSorted.forEach(([h,c],i)=>{
+    kum+=c;
+    const s=i%2===0?styleTD:styleTDalt;
+    setCell(ws2, XLSX.utils.encode_cell({r:1+i,c:0}), h+':00', s);
+    setCell(ws2, XLSX.utils.encode_cell({r:1+i,c:1}), c, s);
+    setCell(ws2, XLSX.utils.encode_cell({r:1+i,c:2}), kum, s);
+    ws2[XLSX.utils.encode_cell({r:1+i,c:1})].t='n';
+    ws2[XLSX.utils.encode_cell({r:1+i,c:2})].t='n';
+  });
+  ws2['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:hSorted.length,c:2}});
+  XLSX.utils.book_append_sheet(wb, ws2, '📈 Stündlich');
+
+  // ── SHEET 3: NICHT ERSCHIENEN ──
+  const ws3 = {};
+  ws3['!cols'] = [{wch:16},{wch:16},{wch:20},{wch:18},{wch:8}];
+  ['Vorname','Nachname','Firma','Kategorie','VIP'].forEach((h,i)=>{
+    setCell(ws3, XLSX.utils.encode_cell({r:0,c:i}), h, styleTH);
+  });
+  rawGuests.filter(x=>!x.checked_in).forEach((g,ri)=>{
+    const s=ri%2===0?styleTD:styleTDalt;
+    [g.vorname||'',g.nachname||'',g.firma||'',g.kategorie||'',g.vip?'Ja':'Nein'].forEach((v,ci)=>{
+      setCell(ws3, XLSX.utils.encode_cell({r:1+ri,c:ci}), v, s);
+    });
+  });
+  ws3['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:1+rawGuests.filter(x=>!x.checked_in).length,c:4}});
+  XLSX.utils.book_append_sheet(wb, ws3, '❌ Nicht erschienen');
 
   XLSX.writeFile(wb, `GDSF_2026_Statistik_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
