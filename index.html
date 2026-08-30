@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GDSF · Guest Check-In v4.2</title>
+<title>GDSF · Guest Check-In v4.3</title>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -2236,10 +2236,11 @@ function cancelAccountEdit() {
 }
 
 async function saveAccountEdit(id) {
-  const name = document.getElementById(`edit-acc-name-${id}`).value.trim();
-  const username = document.getElementById(`edit-acc-user-${id}`).value.trim().toLowerCase();
-  const pass = document.getElementById(`edit-acc-pass-${id}`).value.trim();
-  const is_admin = document.getElementById(`edit-acc-role-${id}`).value === 'true';
+  const name = (document.getElementById('en-' + id) || document.getElementById('edit-acc-name-' + id)).value.trim();
+  const username = (document.getElementById('eu-' + id) || document.getElementById('edit-acc-user-' + id)).value.trim().toLowerCase();
+  const pass = (document.getElementById('ep-' + id) || document.getElementById('edit-acc-pass-' + id)).value.trim();
+  const roleEl = document.getElementById('er-' + id) || document.getElementById('edit-acc-role-' + id);
+  const is_admin = roleEl.value === 'true';
   if (!name || !username) { toast('Name und Benutzername erforderlich', 'error'); return; }
   const update = { name, username, is_admin };
   if (pass) update.password_hash = pass;
