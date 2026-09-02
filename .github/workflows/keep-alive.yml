@@ -1,0 +1,18 @@
+yaml
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to prevent free-tier pause
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "https://xdgufsqaplekmxuiubhu.supabase.co/rest/v1/events?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
